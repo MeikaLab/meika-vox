@@ -14,8 +14,8 @@ from .contracts import (
     RunStatus,
     SourceLocator,
     SpeakerTurn,
-    TranscriptSegment,
     TranscriptionRun,
+    TranscriptSegment,
     Word,
 )
 from .hashing import sha256_file
