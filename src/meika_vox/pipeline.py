@@ -1,4 +1,4 @@
-"""Source fingerprint -> canonical transcript -> QA."""
+"""Source fingerprint -> canonical transcript -> normalization -> QA."""
 
 import mimetypes
 from datetime import UTC, datetime
@@ -7,17 +7,29 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from . import __version__
-from .contracts import AudioAsset, RunStatus, SourceLocator, TranscriptionRun, TranscriptSegment
+from .contracts import (
+    AudioAsset,
+    NormalizationChange,
+    RunStatus,
+    SourceLocator,
+    SpeakerTurn,
+    TranscriptSegment,
+    TranscriptionRun,
+)
 from .hashing import sha256_file
 from .ids import make_audio_asset_id, make_run_id, make_segment_id
+from .normalization import GlossaryConfig, normalize_segments
 from .providers.base import TranscriptionProvider
 from .qa import validate_segments
+from .turns import build_speaker_turns
 
 
 class PipelineBundle(BaseModel):
     asset: AudioAsset
     run: TranscriptionRun
     segments: list[TranscriptSegment]
+    turns: list[SpeakerTurn]
+    normalization_changes: list[NormalizationChange]
     qa_flags: list[dict[str, str | None]]
 
 
@@ -46,6 +58,9 @@ def run_transcription(
     path: str | Path,
     project_id: str,
     provider: TranscriptionProvider,
+    *,
+    glossary: GlossaryConfig | None = None,
+    turn_gap_ms: int = 1500,
 ) -> PipelineBundle:
     asset = ingest_local(path, project_id)
     run_id = make_run_id()
@@ -92,6 +107,11 @@ def run_transcription(
             )
         )
 
+    normalization_changes: list[NormalizationChange] = []
+    if glossary is not None:
+        segments, normalization_changes = normalize_segments(segments, glossary)
+
+    turns = build_speaker_turns(segments, max_gap_ms=turn_gap_ms)
     qa_flags = validate_segments(segments)
     if any(flag.severity in {"WARNING", "REVIEW_REQUIRED", "ERROR"} for flag in qa_flags):
         run.status = RunStatus.COMPLETED_WITH_WARNINGS
@@ -100,6 +120,8 @@ def run_transcription(
         asset=asset,
         run=run,
         segments=segments,
+        turns=turns,
+        normalization_changes=normalization_changes,
         qa_flags=[
             {
                 "code": flag.code,

@@ -28,3 +28,13 @@ def make_segment_id(audio_asset_id: str, segment_index: int) -> str:
     if segment_index < 0:
         raise ValueError("segment_index must be >= 0")
     return f"{audio_asset_id}-SEG-{segment_index:06d}"
+
+
+def make_turn_id(audio_asset_id: str, turn_index: int) -> str:
+    if turn_index < 0:
+        raise ValueError("turn_index must be >= 0")
+    return f"{audio_asset_id}-TURN-{turn_index:06d}"
+
+
+def make_review_event_id() -> str:
+    return f"REV-{uuid4().hex[:12].upper()}"

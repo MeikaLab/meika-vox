@@ -17,6 +17,13 @@ class ReviewStatus(StrEnum):
     REJECTED = "REJECTED"
 
 
+class ReviewEventType(StrEnum):
+    TEXT_EDIT = "TEXT_EDIT"
+    SPEAKER_LABEL = "SPEAKER_LABEL"
+    SPEAKER_ROLE = "SPEAKER_ROLE"
+    STATUS_CHANGE = "STATUS_CHANGE"
+
+
 class RunStatus(StrEnum):
     QUEUED = "QUEUED"
     PROCESSING = "PROCESSING"
@@ -99,6 +106,7 @@ class TranscriptSegment(BaseModel):
     speaker_label: str | None = None
     speaker_role: str | None = None
     text_raw: str
+    text_normalized: str | None = None
     text_reviewed: str | None = None
     language: str | None = None
     confidence_asr: float | None = Field(default=None, ge=0, le=1)
@@ -115,3 +123,41 @@ class TranscriptSegment(BaseModel):
         if self.source_locator.audio_asset_id != self.audio_asset_id:
             raise ValueError("source_locator must resolve to the same audio_asset_id")
         return self
+
+
+class SpeakerTurn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    turn_id: str
+    transcription_run_id: str
+    audio_asset_id: str
+    turn_index: int = Field(ge=0)
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(ge=0)
+    speaker_cluster_id: str
+    speaker_label: str | None = None
+    speaker_role: str | None = None
+    source_segment_ids: list[str]
+    text_raw: str
+    text_normalized: str | None = None
+    text_reviewed: str | None = None
+    source_locator: SourceLocator
+
+
+class NormalizationChange(BaseModel):
+    segment_id: str
+    variant: str
+    canonical: str
+    replacements: int = Field(ge=1)
+
+
+class ReviewEvent(BaseModel):
+    event_id: str
+    segment_id: str
+    event_type: ReviewEventType
+    field_name: str
+    previous_value: str | None = None
+    new_value: str | None = None
+    reviewer_id: str | None = None
+    reason: str | None = None
+    created_at: datetime

@@ -1,0 +1,24 @@
+{
+  "schema_version": "0.1",
+  "project_id": "DEMO",
+  "entries": [
+    {
+      "canonical": "CESFAM",
+      "variants": ["cesfam", "ces fan", "ces fan"],
+      "case_sensitive": false
+    },
+    {
+      "canonical": "PLADECO",
+      "variants": ["pladeco", "pla de co"],
+      "case_sensitive": false
+    },
+    {
+      "canonical": "determinantes sociales de la salud",
+      "variants": [
+        "determinantes sociales de salud",
+        "determinantes sociales de la salud"
+      ],
+      "case_sensitive": false
+    }
+  ]
+}

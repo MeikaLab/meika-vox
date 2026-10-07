@@ -8,6 +8,7 @@ from pathlib import Path
 import typer
 
 from .export import write_bundle
+from .normalization import load_glossary
 from .pipeline import ingest_local, run_transcription
 from .providers.whisperx_provider import WhisperXProvider
 
@@ -27,6 +28,27 @@ def ingest(
     typer.echo(json.dumps(asset.model_dump(mode="json"), ensure_ascii=False, indent=2))
 
 
+@app.command("validate-glossary")
+def validate_glossary(
+    glossary: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
+) -> None:
+    """Validate and summarize a project glossary."""
+    config = load_glossary(glossary)
+    variants = sum(len(entry.variants) for entry in config.entries)
+    typer.echo(
+        json.dumps(
+            {
+                "schema_version": config.schema_version,
+                "project_id": config.project_id,
+                "entries": len(config.entries),
+                "variants": variants,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+
 @app.command()
 def transcribe(
     audio: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
@@ -40,6 +62,20 @@ def transcribe(
     diarize: bool = typer.Option(False, "--diarize"),
     min_speakers: int | None = typer.Option(None, "--min-speakers", min=1),
     max_speakers: int | None = typer.Option(None, "--max-speakers", min=1),
+    glossary: Path | None = typer.Option(
+        None,
+        "--glossary",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="JSON glossary for conservative contextual normalization.",
+    ),
+    turn_gap_ms: int = typer.Option(
+        1500,
+        "--turn-gap-ms",
+        min=0,
+        help="Maximum gap for merging consecutive segments from the same speaker.",
+    ),
 ) -> None:
     """Transcribe one file and persist a reproducible run bundle."""
     provider = WhisperXProvider(
@@ -52,7 +88,14 @@ def transcribe(
         min_speakers=min_speakers,
         max_speakers=max_speakers,
     )
-    bundle = run_transcription(audio, project_id, provider)
+    glossary_config = load_glossary(glossary) if glossary is not None else None
+    bundle = run_transcription(
+        audio,
+        project_id,
+        provider,
+        glossary=glossary_config,
+        turn_gap_ms=turn_gap_ms,
+    )
     run_dir = write_bundle(bundle, output)
     typer.echo(str(run_dir))
 

@@ -4,26 +4,28 @@
 
 MEIKA Vox turns interviews, workshops and group sessions into structured, auditable qualitative data.
 
-> Audio → transcription → speaker diarization → canonical segments → QA → human review → evidence-ready data
+> Audio → transcription → diarization → normalization → QA → human review → evidence-ready data
 
 MEIKA Vox is a **data pipeline first**. It preserves provenance, timestamps, speaker attribution, processing metadata and review state instead of treating a transcript as a final document.
 
 ## Working alpha
 
-The first end-to-end path is now implemented:
+The current end-to-end path is:
 
 ```text
 local audio
 → SHA-256 fingerprint
-→ WhisperX transcription
-→ forced alignment
+→ WhisperX transcription + alignment
 → optional pyannote diarization
 → canonical TranscriptSegment[]
+→ deterministic contextual normalization
+→ SpeakerTurn[]
 → structural QA
 → reproducible run bundle
+→ human-review boundary
 ```
 
-A successful run writes:
+A successful run now writes:
 
 ```text
 meika_vox_output/
@@ -31,8 +33,12 @@ meika_vox_output/
     └── <transcription_run_id>/
         ├── asset.json
         ├── manifest.json
-        ├── transcript.jsonl
-        ├── transcript.txt
+        ├── transcript_raw.jsonl
+        ├── transcript_normalized.jsonl
+        ├── speaker_turns.jsonl
+        ├── transcript_normalized.txt
+        ├── normalization_changes.json
+        ├── review_events.jsonl
         └── qa.json
 ```
 
@@ -57,24 +63,25 @@ WhisperX may also require FFmpeg and the appropriate CUDA stack when using an NV
 
 ## Transcribe
 
-Start without diarization:
-
 ```bash
 meika-vox transcribe interview.m4a --project-id DEMO --language es
 ```
 
-For better accuracy, choose a larger model when your hardware allows it:
+Use a project glossary for recurrent ASR errors, acronyms, terminology and place names:
 
 ```bash
 meika-vox transcribe interview.m4a \
   --project-id DEMO \
   --language es \
-  --model large-v3
+  --model large-v3 \
+  --glossary project_glossary.json
 ```
+
+See [Contextual normalization](docs/NORMALIZATION.md).
 
 ## Speaker diarization
 
-WhisperX uses pyannote for speaker diarization. Accept the terms for the required pyannote model in Hugging Face and expose a read token:
+WhisperX uses pyannote for speaker diarization:
 
 ```bash
 export HF_TOKEN=hf_xxx
@@ -86,38 +93,43 @@ meika-vox transcribe interview.m4a \
   --max-speakers 8
 ```
 
-On Windows PowerShell:
+Speaker IDs remain technical labels such as `SPEAKER_00`. MEIKA Vox does not infer real identities.
 
-```powershell
-$env:HF_TOKEN="hf_xxx"
+## Raw, normalized and reviewed are different data
+
+```text
+text_raw
+  ↓ declared project glossary
+text_normalized
+  ↓ human correction
+text_reviewed
 ```
 
-Speaker IDs remain technical labels such as `SPEAKER_00`. MEIKA Vox does not infer real identities.
+Normalization never overwrites raw ASR output. Every glossary replacement is stored in `normalization_changes.json`.
+
+Human edits belong in an append-only `review_events.jsonl` audit trail. The review UI is a later milestone; the data contract is already prepared.
+
+## Speaker turns
+
+ASR segments are preserved as the atomic lineage unit. Consecutive segments from the same technical speaker can also be merged into derived `SpeakerTurn` objects for readable transcripts. Every turn keeps its source segment IDs.
 
 ## Why this is different
 
-The canonical model is provider-independent. WhisperX is the first engine, not the domain model.
+The canonical model is provider-independent:
 
 ```text
 WhisperX ─┐
-Deepgram ─┼─> ProviderResult -> TranscriptSegment -> QA -> Review
+Deepgram ─┼─> ProviderResult -> TranscriptSegment -> Normalization -> QA -> Review
 NeMo ─────┘
 ```
 
-This keeps downstream qualitative analysis stable even if the speech engine changes.
+The downstream qualitative system therefore does not depend on one speech provider.
 
 ## QA
 
-MEIKA Vox currently detects:
+MEIKA Vox currently detects empty transcripts, timestamp-order errors, overlapping speech, unusually long segments, empty segment text and missing speaker assignment.
 
-- empty transcripts;
-- timestamp-order errors;
-- overlapping speech;
-- unusually long segments;
-- empty segment text;
-- missing speaker assignment.
-
-Overlap is not treated as a broken timestamp: it is preserved as a reviewable property of conversation.
+Overlap is preserved as conversational information rather than automatically treated as a broken timestamp.
 
 ## Data-engineering zones
 
@@ -125,6 +137,7 @@ Overlap is not treated as a broken timestamp: it is preserved as a reviewable pr
 |---|---|---|
 | **Raw** | Original media + source metadata + checksum | Immutable |
 | **Canonical** | Provider-independent segments, speakers and timestamps | Versioned |
+| **Normalized** | Conservative terminology corrections with audit log | Versioned |
 | **Reviewed** | Human-validated text and speaker labels | Versioned |
 
 A transcript segment is **not** automatically evidence, and evidence is **not** automatically a finding.
@@ -133,11 +146,13 @@ A transcript segment is **not** automatically evidence, and evidence is **not** 
 
 This public repository must never contain real project audio, productive transcripts, participant identities, consent records, credentials or restricted project data.
 
+Project-specific glossaries that expose private information should remain in controlled storage.
+
 See [SECURITY.md](SECURITY.md).
 
-## Next
+## Roadmap
 
-The next engineering milestones are batch-folder ingestion, speaker turns, Parquet, review events and REFI-QDA interoperability.
+Next: batch-folder ingestion, Parquet, review UI, review-event application and REFI-QDA interoperability.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md).
 
