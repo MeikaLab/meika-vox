@@ -7,13 +7,32 @@
       "label": "Las Cabras - territorial workshop audio A",
       "audio_env": "MEIKA_VOX_SM26_LAS_CABRAS_A",
       "term_groups": {
-        "toponyms": ["Las Cabras", "Santa María"],
-        "health_services": ["Estación Médico Rural", "CESFAM"],
+        "toponyms": [
+          "Las Cabras",
+          "Santa María"
+        ],
+        "health_services": [
+          "Estación Médico Rural",
+          "CESFAM"
+        ],
+        "health_terms": [
+          "TENS",
+          "DM2",
+          "morbilidad",
+          "matrona",
+          "podología"
+        ],
         "themes": [
           "locomoción",
           "salud mental",
           "adultos mayores",
+          "alcohol",
           "drogas"
+        ],
+        "assets": [
+          "cancha de fútbol",
+          "plazoleta",
+          "sede junta de vecinos"
         ]
       }
     },
@@ -22,17 +41,30 @@
       "label": "Escuela Guillermo Bañados - focus group table 1",
       "audio_env": "MEIKA_VOX_SM26_GUILLERMO_BANADOS_M1",
       "term_groups": {
-        "toponyms": ["Las Cadenas", "Tocornal", "Santa María"],
+        "toponyms": [
+          "Las Cadenas",
+          "Tocornal",
+          "El Pino",
+          "Santa María"
+        ],
         "institutions": [
           "Escuela Guillermo Bañados",
           "CECOSF",
-          "SENDA"
+          "SENDA",
+          "PIE"
         ],
         "themes": [
           "salud mental",
           "seguridad",
           "drogas",
-          "áreas verdes"
+          "áreas verdes",
+          "quema de basura",
+          "perros callejeros"
+        ],
+        "health_education": [
+          "anticoncepción",
+          "sexualidad",
+          "control adolescente"
         ]
       }
     }
