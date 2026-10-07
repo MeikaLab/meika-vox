@@ -36,7 +36,7 @@ class SourceLocator(BaseModel):
     file_id: str | None = None
 
     @model_validator(mode="after")
-    def validate_range(self) -> "SourceLocator":
+    def validate_range(self) -> SourceLocator:
         if self.end_ms < self.start_ms:
             raise ValueError("end_ms must be greater than or equal to start_ms")
         return self
@@ -109,7 +109,7 @@ class TranscriptSegment(BaseModel):
     source_locator: SourceLocator
 
     @model_validator(mode="after")
-    def validate_segment(self) -> "TranscriptSegment":
+    def validate_segment(self) -> TranscriptSegment:
         if self.end_ms < self.start_ms:
             raise ValueError("end_ms must be greater than or equal to start_ms")
         if self.source_locator.audio_asset_id != self.audio_asset_id:
