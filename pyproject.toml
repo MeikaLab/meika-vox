@@ -10,11 +10,19 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 authors = [{ name = "MEIKA LAB" }]
-dependencies = ["pydantic>=2.8,<3", "typer>=0.12,<1"]
+dependencies = [
+  "pydantic>=2.8,<3",
+  "typer>=0.12,<1",
+]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<9", "ruff>=0.8,<1"]
-whisperx = ["whisperx>=3.3"]
+dev = [
+  "pytest>=8,<9",
+  "ruff>=0.8,<1",
+]
+whisperx = [
+  "whisperx>=3.3",
+]
 
 [project.scripts]
 meika-vox = "meika_vox.cli:app"
@@ -28,3 +36,6 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

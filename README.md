@@ -2,37 +2,124 @@
 
 **Traceable speech-to-data pipelines for qualitative and territorial research.**
 
-MEIKA Vox is an open-source toolkit for turning interviews, workshops and group sessions into structured, auditable qualitative data.
+MEIKA Vox turns interviews, workshops and group sessions into structured, auditable qualitative data.
 
 > Audio → transcription → speaker diarization → canonical segments → QA → human review → evidence-ready data
 
-MEIKA Vox is designed as a **data pipeline first**. It does not treat a transcript as a final document and it does not automatically turn speech into findings. Instead, it preserves provenance, timestamps, speaker attribution, processing metadata and review state so downstream analysis can remain auditable.
+MEIKA Vox is a **data pipeline first**. It preserves provenance, timestamps, speaker attribution, processing metadata and review state instead of treating a transcript as a final document.
 
-## Why MEIKA Vox?
+## Working alpha
 
-Most speech-to-text tools optimize for readable text. Research workflows need more:
+The first end-to-end path is now implemented:
 
-- stable identifiers and provenance;
-- exact source timestamps;
-- speaker diarization;
-- reproducible processing runs;
-- machine-readable contracts;
-- quality checks and human review;
-- a clean handoff to qualitative analysis.
-
-## Pipeline
-
-```mermaid
-flowchart LR
-    A[Raw audio] --> B[Ingest + checksum]
-    B --> C[Transcription provider]
-    C --> D[Canonical segments]
-    D --> E[Structural QA]
-    E --> F[Human review]
-    F --> G[Evidence-ready data]
+```text
+local audio
+→ SHA-256 fingerprint
+→ WhisperX transcription
+→ forced alignment
+→ optional pyannote diarization
+→ canonical TranscriptSegment[]
+→ structural QA
+→ reproducible run bundle
 ```
 
-## Data-engineering model
+A successful run writes:
+
+```text
+meika_vox_output/
+└── <audio_asset_id>/
+    └── <transcription_run_id>/
+        ├── asset.json
+        ├── manifest.json
+        ├── transcript.jsonl
+        ├── transcript.txt
+        └── qa.json
+```
+
+## Install
+
+Python 3.11+ is required.
+
+```bash
+git clone https://github.com/MeikaLab/meika-vox.git
+cd meika-vox
+
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# Linux/macOS
+# source .venv/bin/activate
+
+pip install -e ".[whisperx]"
+```
+
+WhisperX may also require FFmpeg and the appropriate CUDA stack when using an NVIDIA GPU.
+
+## Transcribe
+
+Start without diarization:
+
+```bash
+meika-vox transcribe interview.m4a --project-id DEMO --language es
+```
+
+For better accuracy, choose a larger model when your hardware allows it:
+
+```bash
+meika-vox transcribe interview.m4a \
+  --project-id DEMO \
+  --language es \
+  --model large-v3
+```
+
+## Speaker diarization
+
+WhisperX uses pyannote for speaker diarization. Accept the terms for the required pyannote model in Hugging Face and expose a read token:
+
+```bash
+export HF_TOKEN=hf_xxx
+meika-vox transcribe interview.m4a \
+  --project-id DEMO \
+  --language es \
+  --diarize \
+  --min-speakers 2 \
+  --max-speakers 8
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:HF_TOKEN="hf_xxx"
+```
+
+Speaker IDs remain technical labels such as `SPEAKER_00`. MEIKA Vox does not infer real identities.
+
+## Why this is different
+
+The canonical model is provider-independent. WhisperX is the first engine, not the domain model.
+
+```text
+WhisperX ─┐
+Deepgram ─┼─> ProviderResult -> TranscriptSegment -> QA -> Review
+NeMo ─────┘
+```
+
+This keeps downstream qualitative analysis stable even if the speech engine changes.
+
+## QA
+
+MEIKA Vox currently detects:
+
+- empty transcripts;
+- timestamp-order errors;
+- overlapping speech;
+- unusually long segments;
+- empty segment text;
+- missing speaker assignment.
+
+Overlap is not treated as a broken timestamp: it is preserved as a reviewable property of conversation.
+
+## Data-engineering zones
 
 | Zone | Purpose | Mutability |
 |---|---|---|
@@ -42,73 +129,15 @@ flowchart LR
 
 A transcript segment is **not** automatically evidence, and evidence is **not** automatically a finding.
 
-## Current status
-
-**Alpha / public R&D.** The initial reference stack is:
-
-- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — efficient ASR;
-- [WhisperX](https://github.com/m-bain/whisperX) — alignment and speaker-aware transcription workflows;
-- [pyannote.audio](https://github.com/pyannote/pyannote-audio) — speaker diarization.
-
-## Quick start
-
-```bash
-git clone https://github.com/MeikaLab/meika-vox.git
-cd meika-vox
-python -m venv .venv
-pip install -e ".[dev]"
-pytest
-```
-
-Inspect and fingerprint an audio asset:
-
-```bash
-meika-vox ingest path/to/interview.m4a --project-id DEMO
-```
-
-## Canonical objects
-
-- `AudioAsset`
-- `TranscriptionRun`
-- `TranscriptSegment`
-- `SourceLocator`
-
-Example:
-
-```json
-{
-  "segment_id": "SM26-AUD-ABC123-SEG-000041",
-  "audio_asset_id": "SM26-AUD-ABC123",
-  "segment_index": 41,
-  "start_ms": 1101320,
-  "end_ms": 1127880,
-  "speaker_cluster_id": "SPEAKER_03",
-  "text_raw": "El problema acá es que después de las seis no tenemos locomoción.",
-  "review_status": "MACHINE_GENERATED"
-}
-```
-
-## Design references
-
-MEIKA Vox learns from WhisperX, faster-whisper, pyannote.audio, aTrain, noScribe, whisperx-research-transcription and Trail of Bits Scribe while maintaining its own provider-independent contracts and codebase.
-
 ## Privacy rule
 
 This public repository must never contain real project audio, productive transcripts, participant identities, consent records, credentials or restricted project data.
 
 See [SECURITY.md](SECURITY.md).
 
-## Roadmap
+## Next
 
-1. canonical contracts + lineage;
-2. local ingestion + checksums;
-3. provider interface;
-4. WhisperX/pyannote adapter;
-5. QA + run manifests;
-6. JSONL/Parquet exports;
-7. human review interface;
-8. Google Drive ingestion;
-9. downstream evidence handoff.
+The next engineering milestones are batch-folder ingestion, speaker turns, Parquet, review events and REFI-QDA interoperability.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md).
 

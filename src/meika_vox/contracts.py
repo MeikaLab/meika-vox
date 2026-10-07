@@ -1,8 +1,10 @@
 """Canonical, provider-independent data contracts for MEIKA Vox."""
 
 from __future__ import annotations
+
 from datetime import datetime
 from enum import StrEnum
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -26,6 +28,7 @@ class RunStatus(StrEnum):
 
 class SourceLocator(BaseModel):
     model_config = ConfigDict(extra="allow")
+
     audio_asset_id: str
     start_ms: int = Field(ge=0)
     end_ms: int = Field(ge=0)
@@ -41,6 +44,7 @@ class SourceLocator(BaseModel):
 
 class AudioAsset(BaseModel):
     model_config = ConfigDict(extra="allow")
+
     audio_asset_id: str
     project_id: str
     territory_id: str | None = None
@@ -60,6 +64,7 @@ class AudioAsset(BaseModel):
 
 class TranscriptionRun(BaseModel):
     model_config = ConfigDict(extra="allow")
+
     transcription_run_id: str
     audio_asset_id: str
     provider: str
@@ -83,6 +88,7 @@ class TranscriptionRun(BaseModel):
 
 class TranscriptSegment(BaseModel):
     model_config = ConfigDict(extra="allow")
+
     segment_id: str
     transcription_run_id: str
     audio_asset_id: str

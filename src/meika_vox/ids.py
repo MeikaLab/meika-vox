@@ -1,7 +1,10 @@
 """Stable ID helpers."""
-import re, unicodedata
+
+import re
+import unicodedata
 from datetime import UTC, datetime
 from uuid import uuid4
+
 
 def slug_token(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value)
@@ -11,12 +14,15 @@ def slug_token(value: str) -> str:
         raise ValueError("ID token cannot be empty")
     return token
 
+
 def make_audio_asset_id(project_id: str, checksum_sha256: str) -> str:
     return f"{slug_token(project_id)}-AUD-{checksum_sha256[:10].upper()}"
+
 
 def make_run_id(now: datetime | None = None) -> str:
     timestamp = (now or datetime.now(UTC)).strftime("%Y%m%dT%H%M%SZ")
     return f"RUN-{timestamp}-{uuid4().hex[:6].upper()}"
+
 
 def make_segment_id(audio_asset_id: str, segment_index: int) -> str:
     if segment_index < 0:
