@@ -27,7 +27,6 @@ def build_speaker_turns(
         if not bucket:
             return
         first = bucket[0]
-        last = bucket[-1]
         index = len(turns)
         normalized_parts = [
             segment.text_normalized or segment.text_raw for segment in bucket
