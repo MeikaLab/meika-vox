@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from .contracts import TranscriptSegment, Word
+from .repetition import find_repetition_loops
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +60,21 @@ def validate_segments(segments: list[TranscriptSegment]) -> list[QAFlag]:
                     "EMPTY_SEGMENT_TEXT",
                     "REVIEW_REQUIRED",
                     "Segment has no transcript text.",
+                    segment.segment_id,
+                )
+            )
+
+        loops = find_repetition_loops(segment.text_raw)
+        if loops:
+            example = loops[0]
+            flags.append(
+                QAFlag(
+                    "ASR_REPETITION_LOOP",
+                    "REVIEW_REQUIRED",
+                    (
+                        "Extreme ASR repetition detected: "
+                        f"{example.phrase!r} repeated {example.repetitions} times."
+                    ),
                     segment.segment_id,
                 )
             )

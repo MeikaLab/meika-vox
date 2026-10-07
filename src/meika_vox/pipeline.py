@@ -25,6 +25,7 @@ from .ids import make_audio_asset_id, make_run_id, make_segment_id, make_word_id
 from .media import MediaProbeResult, probe_media
 from .normalization import GlossaryConfig, normalize_segments
 from .providers.base import TranscriptionProvider
+from .repetition import suppress_segment_repetition_loops
 from .qa import validate_segments, validate_words
 from .turns import build_speaker_turns
 
@@ -162,9 +163,12 @@ def run_transcription(
             )
         )
 
-    normalization_changes: list[NormalizationChange] = []
+    segments, repetition_changes = suppress_segment_repetition_loops(segments)
+    normalization_changes: list[NormalizationChange] = list(repetition_changes)
+
     if glossary is not None:
-        segments, normalization_changes = normalize_segments(segments, glossary)
+        segments, glossary_changes = normalize_segments(segments, glossary)
+        normalization_changes.extend(glossary_changes)
 
     turns = build_speaker_turns(segments, max_gap_ms=turn_gap_ms)
     qa = validate_segments(segments) + validate_words(words, segments)

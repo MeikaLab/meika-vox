@@ -175,6 +175,7 @@ class NormalizationChange(BaseModel):
     variant: str
     canonical: str
     replacements: int = Field(ge=1)
+    rule_id: str = "GLOSSARY"
 
 
 class ReviewEvent(BaseModel):

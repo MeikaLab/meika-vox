@@ -76,7 +76,8 @@ def normalize_segments(
     audit: list[NormalizationChange] = []
 
     for segment in segments:
-        text_normalized, changes = normalize_text(segment.text_raw, glossary)
+        source_text = segment.text_normalized or segment.text_raw
+        text_normalized, changes = normalize_text(source_text, glossary)
         normalized_segments.append(
             segment.model_copy(update={"text_normalized": text_normalized})
         )
