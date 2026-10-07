@@ -66,12 +66,73 @@ def complete_run(run: Path) -> bool:
         return False
 
 
+def _clean_label(value: str) -> str:
+    value = re.sub(r"^\\d+\\s*-\\s*", "", value).strip()
+    value = re.sub(r"[^\\wÁÉÍÓÚÜÑáéíóúüñ.-]+", "_", value, flags=re.UNICODE)
+    return re.sub(r"_+", "_", value).strip("_.") or "Actividad"
+
+
+def _activity_label(audio: Path) -> str:
+    """Build a human-readable activity label from the Drive folder hierarchy."""
+    ancestors = [parent.name.strip() for parent in audio.parents]
+    mesa = None
+    group_focal = None
+    taller_number = None
+    taller_place = None
+
+    for name in ancestors:
+        mesa_match = re.fullmatch(r"MESA\\s*(\\d+)", name, flags=re.IGNORECASE)
+        if mesa_match and mesa is None:
+            mesa = mesa_match.group(1)
+
+        if name.upper().startswith("GRUPO FOCAL ") and group_focal is None:
+            group_focal = name[len("GRUPO FOCAL ") :].strip()
+
+        taller_match = re.match(
+            r"^\\d+\\s*-\\s*Taller\\s*(\\d+)\\s*(?:-\\s*)?(.*)$",
+            name,
+            flags=re.IGNORECASE,
+        )
+        if taller_match and taller_number is None:
+            taller_number = taller_match.group(1)
+            taller_place = taller_match.group(2).strip()
+
+    components: list[str] = []
+    if group_focal:
+        components.append(_clean_label(group_focal.title()))
+    elif taller_place:
+        components.append(_clean_label(taller_place.title()))
+
+    if mesa:
+        components.append(f"Mesa_{mesa}")
+    elif taller_number:
+        components.append(f"Taller_{taller_number}")
+
+    if not components:
+        parent = next(
+            (name for name in ancestors if name.lower() not in {"audio", "audios"}),
+            audio.parent.name,
+        )
+        components.append(_clean_label(parent))
+
+    siblings = discover_audio(audio.parent)
+    if len(siblings) > 1:
+        try:
+            part = siblings.index(audio) + 1
+        except ValueError:
+            part = 1
+        components.append(f"Parte_{part}")
+
+    return "__".join(components)
+
+
 def readable_copy(audio: Path, run: Path, output: Path, checksum: str) -> Path:
-    """Keep a readable copy labelled with the source filename and model-run identity."""
-    label = re.sub(r"[^\w .-]", "_", audio.stem).strip(" .") or "audio"
-    destination = output / "Lectura" / run.parent.name / run.name
+    """Write a human-readable transcript named from activity context."""
+    del checksum  # Source identity remains in the technical manifest.
+    label = _activity_label(audio)
+    destination = output / "Lectura"
     destination.mkdir(parents=True, exist_ok=True)
-    target = destination / f"{label}-{checksum[:8]}.txt"
+    target = destination / f"{label}__Transcripcion.txt"
     shutil.copyfile(run / "transcript_normalized.txt", target)
     return target
 
