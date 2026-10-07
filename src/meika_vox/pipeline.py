@@ -13,8 +13,8 @@ from .contracts import (
     RunStatus,
     SourceLocator,
     SpeakerTurn,
-    TranscriptSegment,
     TranscriptionRun,
+    TranscriptSegment,
 )
 from .hashing import sha256_file
 from .ids import make_audio_asset_id, make_run_id, make_segment_id
