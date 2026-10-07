@@ -25,8 +25,8 @@ from .ids import make_audio_asset_id, make_run_id, make_segment_id, make_word_id
 from .media import MediaProbeResult, probe_media
 from .normalization import GlossaryConfig, normalize_segments
 from .providers.base import TranscriptionProvider
-from .repetition import suppress_segment_repetition_loops
 from .qa import validate_segments, validate_words
+from .repetition import suppress_segment_repetition_loops
 from .turns import build_speaker_turns
 
 
