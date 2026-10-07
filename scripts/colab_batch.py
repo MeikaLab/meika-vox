@@ -67,9 +67,20 @@ def complete_run(run: Path) -> bool:
 
 
 def _clean_label(value: str) -> str:
-    value = re.sub(r"^\\d+\\s*-\\s*", "", value).strip()
-    value = re.sub(r"[^\\wÁÉÍÓÚÜÑáéíóúüñ.-]+", "_", value, flags=re.UNICODE)
+    value = re.sub(r"^\d+\s*-\s*", "", value).strip()
+    value = re.sub(r"[^\wÁÉÍÓÚÜÑáéíóúüñ.-]+", "_", value, flags=re.UNICODE)
     return re.sub(r"_+", "_", value).strip("_.") or "Actividad"
+
+
+def _audio_part_key(audio: Path) -> tuple[str, int, str]:
+    """Sort base recording first, then numbered continuations naturally."""
+    stem = audio.stem.strip()
+    match = re.match(r"^(.*?)(?:\s+(\d+))?$", stem)
+    if not match:
+        return (stem.casefold(), 1, stem.casefold())
+    base = (match.group(1) or stem).strip()
+    suffix = int(match.group(2)) if match.group(2) else 1
+    return (base.casefold(), suffix, stem.casefold())
 
 
 def _activity_label(audio: Path) -> str:
@@ -81,7 +92,7 @@ def _activity_label(audio: Path) -> str:
     taller_place = None
 
     for name in ancestors:
-        mesa_match = re.fullmatch(r"MESA\\s*(\\d+)", name, flags=re.IGNORECASE)
+        mesa_match = re.fullmatch(r"MESA\s*(\d+)", name, flags=re.IGNORECASE)
         if mesa_match and mesa is None:
             mesa = mesa_match.group(1)
 
@@ -89,7 +100,7 @@ def _activity_label(audio: Path) -> str:
             group_focal = name[len("GRUPO FOCAL ") :].strip()
 
         taller_match = re.match(
-            r"^\\d+\\s*-\\s*Taller\\s*(\\d+)\\s*(?:-\\s*)?(.*)$",
+            r"^\d+\s*-\s*Taller\s*(\d+)\s*(?:-\s*)?(.*)$",
             name,
             flags=re.IGNORECASE,
         )
@@ -115,7 +126,7 @@ def _activity_label(audio: Path) -> str:
         )
         components.append(_clean_label(parent))
 
-    siblings = discover_audio(audio.parent)
+    siblings = sorted(discover_audio(audio.parent), key=_audio_part_key)
     if len(siblings) > 1:
         try:
             part = siblings.index(audio) + 1
@@ -124,7 +135,6 @@ def _activity_label(audio: Path) -> str:
         components.append(f"Parte_{part}")
 
     return "__".join(components)
-
 
 def readable_copy(audio: Path, run: Path, output: Path, checksum: str) -> Path:
     """Write a human-readable transcript named from activity context."""
