@@ -1,0 +1,30 @@
+name: Build Local Whisper Runtime
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download whisper.cpp CPU binary
+        run: |
+          curl -L --fail --retry 3             -o whisper-cpp-linux-x64-cpu.zip             https://github.com/sjoerdteunisse/whisper.cpp/releases/download/v1.0.0/whisper-cpp-linux-x64-cpu.zip
+          unzip -q whisper-cpp-linux-x64-cpu.zip -d whisper-runtime
+      - name: Download multilingual Whisper base model
+        run: |
+          mkdir -p whisper-runtime/models
+          curl -L --fail --retry 3             -o whisper-runtime/models/ggml-base.bin             https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
+          sha256sum whisper-runtime/models/ggml-base.bin
+      - name: Inventory runtime
+        run: find whisper-runtime -maxdepth 3 -type f -printf '%p %s bytes\n'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meika-whisper-runtime-linux-x64-base
+          path: whisper-runtime/
+          compression-level: 0
+          retention-days: 7
