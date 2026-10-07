@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from meika_vox.contracts import AudioQualityReport
 from meika_vox.export import write_bundle
 from meika_vox.hashing import sha256_file
 from meika_vox.ids import make_audio_asset_id, make_segment_id, make_word_id
