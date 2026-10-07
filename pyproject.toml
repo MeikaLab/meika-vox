@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "meika-vox"
+version = "0.1.0"
+description = "Traceable speech-to-data pipelines for qualitative and territorial research."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "MEIKA LAB" }]
+dependencies = ["pydantic>=2.8,<3", "typer>=0.12,<1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9", "ruff>=0.8,<1"]
+whisperx = ["whisperx>=3.3"]
+
+[project.scripts]
+meika-vox = "meika_vox.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/meika_vox"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

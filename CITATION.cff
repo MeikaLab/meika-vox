@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use MEIKA Vox in research, please cite this repository."
+title: "MEIKA Vox"
+type: software
+authors:
+  - name: "MEIKA LAB"
+repository-code: "https://github.com/MeikaLab/meika-vox"
+license: Apache-2.0
+version: 0.1.0
+date-released: 2026-10-07
