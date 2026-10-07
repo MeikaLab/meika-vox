@@ -78,10 +78,18 @@ def run_transcription(
     glossary: GlossaryConfig | None = None,
     turn_gap_ms: int = 1500,
     media_probe: Callable[[str | Path], MediaProbeResult] = probe_media,
+    audio_quality_analyzer: Callable[..., AudioQualityReport] | None = analyze_audio_quality,
 ) -> PipelineBundle:
     asset = ingest_local(path, project_id, media_probe=media_probe)
     run_id = make_run_id()
     started_at = datetime.now(UTC)
+    audio_quality = None
+    if audio_quality_analyzer is not None:
+        audio_quality = audio_quality_analyzer(
+            path,
+            duration_ms=asset.duration_ms,
+        )
+
     result = provider.transcribe(Path(path))
 
     run = TranscriptionRun(
@@ -162,6 +170,7 @@ def run_transcription(
 
     return PipelineBundle(
         asset=asset,
+        audio_quality=audio_quality,
         run=run,
         words=words,
         segments=segments,

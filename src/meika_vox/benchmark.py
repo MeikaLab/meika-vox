@@ -123,6 +123,12 @@ def evaluate_run(
     changes = json.loads(changes_path.read_text(encoding="utf-8"))
     qa_path = root / "qa.json"
     qa = json.loads(qa_path.read_text(encoding="utf-8"))
+    audio_quality_path = root / "audio_qa.json"
+    audio_quality = (
+        json.loads(audio_quality_path.read_text(encoding="utf-8"))
+        if audio_quality_path.exists()
+        else None
+    )
 
     return {
         "case_id": case.case_id,
@@ -139,4 +145,5 @@ def evaluate_run(
         "normalization_change_count": len(changes),
         "qa_flag_count": len(qa),
         "qa_codes": sorted({item["code"] for item in qa}),
+        "audio_quality": audio_quality,
     }

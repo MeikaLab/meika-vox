@@ -24,6 +24,7 @@ def write_bundle(bundle: PipelineBundle, output_root: str | Path) -> Path:
 
     asset_path = run_dir / "asset.json"
     manifest_path = run_dir / "manifest.json"
+    audio_qa_path = run_dir / "audio_qa.json"
     words_jsonl = run_dir / "words.jsonl"
     raw_jsonl = run_dir / "transcript_raw.jsonl"
     normalized_jsonl = run_dir / "transcript_normalized.jsonl"
@@ -34,6 +35,11 @@ def write_bundle(bundle: PipelineBundle, output_root: str | Path) -> Path:
     qa_path = run_dir / "qa.json"
 
     asset_path.write_text(bundle.asset.model_dump_json(indent=2), encoding="utf-8")
+    if bundle.audio_quality is not None:
+        audio_qa_path.write_text(
+            bundle.audio_quality.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
     _write_jsonl(words_jsonl, bundle.words)
 
     raw_segments = [
@@ -78,6 +84,7 @@ def write_bundle(bundle: PipelineBundle, output_root: str | Path) -> Path:
         },
         "outputs": {
             "asset": asset_path.name,
+            "audio_qa": audio_qa_path.name if bundle.audio_quality is not None else None,
             "words": words_jsonl.name,
             "transcript_raw": raw_jsonl.name,
             "transcript_normalized": normalized_jsonl.name,

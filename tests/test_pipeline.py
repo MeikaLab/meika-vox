@@ -24,6 +24,22 @@ def fake_media_probe(path: str | Path) -> MediaProbeResult:
     )
 
 
+def fake_audio_quality(path: str | Path, *, duration_ms: int | None) -> AudioQualityReport:
+    return AudioQualityReport(
+        duration_ms=duration_ms,
+        rms_dbfs=-20.0,
+        peak_dbfs=-1.0,
+        near_full_scale_peak=False,
+        silence_threshold_db=-35.0,
+        silence_min_duration_ms=1000,
+        silence_event_count=0,
+        silence_total_ms=0,
+        silence_ratio=0.0,
+        longest_silence_ms=0,
+        analysis_engine="fake",
+    )
+
+
 class FakeProvider:
     def transcribe(self, audio_path: Path) -> ProviderResult:
         return ProviderResult(
@@ -96,6 +112,7 @@ def test_pipeline_preserves_word_lineage_and_raw(tmp_path: Path) -> None:
         FakeProvider(),
         glossary=glossary,
         media_probe=fake_media_probe,
+        audio_quality_analyzer=fake_audio_quality,
     )
     run_dir = write_bundle(bundle, tmp_path / "output")
 
@@ -108,6 +125,7 @@ def test_pipeline_preserves_word_lineage_and_raw(tmp_path: Path) -> None:
     assert bundle.segments[0].text_raw == "Hola desde el ces fan."
     assert bundle.segments[0].text_normalized == "Hola desde el CESFAM."
 
+    assert (run_dir / "audio_qa.json").exists()
     assert (run_dir / "words.jsonl").exists()
     assert (run_dir / "manifest.json").exists()
     assert (run_dir / "transcript_raw.jsonl").exists()

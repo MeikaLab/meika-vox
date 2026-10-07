@@ -187,3 +187,18 @@ class ReviewEvent(BaseModel):
     reviewer_id: str | None = None
     reason: str | None = None
     created_at: datetime
+
+
+
+class AudioQualityReport(BaseModel):
+    duration_ms: int | None = Field(default=None, ge=0)
+    rms_dbfs: float | None = None
+    peak_dbfs: float | None = None
+    near_full_scale_peak: bool = False
+    silence_threshold_db: float
+    silence_min_duration_ms: int = Field(ge=0)
+    silence_event_count: int = Field(ge=0)
+    silence_total_ms: int = Field(ge=0)
+    silence_ratio: float | None = Field(default=None, ge=0, le=1)
+    longest_silence_ms: int = Field(ge=0)
+    analysis_engine: str
