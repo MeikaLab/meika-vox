@@ -12,11 +12,27 @@ from .export import write_bundle
 from .normalization import load_glossary
 from .pipeline import ingest_local, run_transcription
 from .providers.whisperx_provider import WhisperXProvider
+from .runtime import inspect_runtime, require_asr_runtime
 
 app = typer.Typer(
     no_args_is_help=True,
     help="Traceable speech-to-data pipelines for qualitative and territorial research.",
 )
+
+
+@app.command()
+def doctor(
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Exit with an error when the ASR runtime is incomplete.",
+    ),
+) -> None:
+    """Inspect local speech-processing dependencies."""
+    report = inspect_runtime()
+    typer.echo(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    if strict and not report.asr_ready:
+        raise typer.Exit(code=2)
 
 
 @app.command()
@@ -79,6 +95,7 @@ def transcribe(
     ),
 ) -> None:
     """Transcribe one file and persist a reproducible run bundle."""
+    require_asr_runtime(diarize=diarize)
     provider = WhisperXProvider(
         model=model,
         language=language,

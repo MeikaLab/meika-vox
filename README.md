@@ -54,6 +54,43 @@ python -m venv .venv
 pip install -e ".[whisperx]"
 ```
 
+## Runtime doctor
+
+Before processing real audio, inspect the local runtime:
+
+```bash
+meika-vox doctor
+```
+
+For CI or deployment checks:
+
+```bash
+meika-vox doctor --strict
+```
+
+A transcription-ready runtime requires FFmpeg/ffprobe and the WhisperX speech dependencies. Diarization additionally requires pyannote model access and `HF_TOKEN`.
+
+### Bootstrap
+
+Linux/macOS:
+
+```bash
+bash scripts/bootstrap_runtime.sh
+```
+
+Windows PowerShell:
+
+```powershell
+.\scripts\bootstrap_runtime.ps1
+```
+
+Containerized:
+
+```bash
+docker build -t meika-vox .
+docker run --rm meika-vox doctor
+```
+
 ## Inspect an input
 
 ```bash
