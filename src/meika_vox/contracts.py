@@ -64,6 +64,11 @@ class AudioAsset(BaseModel):
     mime_type: str
     size_bytes: int = Field(ge=0)
     duration_ms: int | None = Field(default=None, ge=0)
+    codec: str | None = None
+    sample_rate: int | None = Field(default=None, ge=1)
+    channels: int | None = Field(default=None, ge=1)
+    bitrate: int | None = Field(default=None, ge=0)
+    format_name: str | None = None
     checksum_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     sensitivity_level: str = "RESTRICTED"
     created_at: datetime
@@ -93,6 +98,25 @@ class TranscriptionRun(BaseModel):
     error_message: str | None = None
 
 
+class Word(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    word_id: str
+    segment_id: str
+    word_index: int = Field(ge=0)
+    token: str
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(ge=0)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    speaker_cluster_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_word(self) -> Word:
+        if self.end_ms < self.start_ms:
+            raise ValueError("end_ms must be greater than or equal to start_ms")
+        return self
+
+
 class TranscriptSegment(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -113,6 +137,7 @@ class TranscriptSegment(BaseModel):
     confidence_diarization: float | None = Field(default=None, ge=0, le=1)
     overlap_flag: bool = False
     low_confidence_flag: bool = False
+    word_ids: list[str] = Field(default_factory=list)
     review_status: ReviewStatus = ReviewStatus.MACHINE_GENERATED
     source_locator: SourceLocator
 
@@ -138,6 +163,7 @@ class SpeakerTurn(BaseModel):
     speaker_label: str | None = None
     speaker_role: str | None = None
     source_segment_ids: list[str]
+    word_ids: list[str] = Field(default_factory=list)
     text_raw: str
     text_normalized: str | None = None
     text_reviewed: str | None = None

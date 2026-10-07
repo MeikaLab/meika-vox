@@ -4,28 +4,28 @@
 
 MEIKA Vox turns interviews, workshops and group sessions into structured, auditable qualitative data.
 
-> Audio → transcription → diarization → normalization → QA → human review → evidence-ready data
+> Audio → metadata → transcription → aligned words → diarization → normalization → QA → human review
 
 MEIKA Vox is a **data pipeline first**. It preserves provenance, timestamps, speaker attribution, processing metadata and review state instead of treating a transcript as a final document.
 
 ## Working alpha
 
-The current end-to-end path is:
+The current primary-evidence path is:
 
 ```text
 local audio
-→ SHA-256 fingerprint
-→ WhisperX transcription + alignment
+→ SHA-256 fingerprint + ffprobe metadata
+→ WhisperX transcription + forced alignment
+→ word-level timestamps
 → optional pyannote diarization
-→ canonical TranscriptSegment[]
+→ Word[] → TranscriptSegment[] → SpeakerTurn[]
 → deterministic contextual normalization
-→ SpeakerTurn[]
 → structural QA
 → reproducible run bundle
 → human-review boundary
 ```
 
-A successful run now writes:
+A successful run writes:
 
 ```text
 meika_vox_output/
@@ -33,6 +33,7 @@ meika_vox_output/
     └── <transcription_run_id>/
         ├── asset.json
         ├── manifest.json
+        ├── words.jsonl
         ├── transcript_raw.jsonl
         ├── transcript_normalized.jsonl
         ├── speaker_turns.jsonl
@@ -44,22 +45,22 @@ meika_vox_output/
 
 ## Install
 
-Python 3.11+ is required.
+Python 3.11+ and FFmpeg/ffprobe on `PATH` are required.
 
 ```bash
 git clone https://github.com/MeikaLab/meika-vox.git
 cd meika-vox
-
 python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# Linux/macOS
-# source .venv/bin/activate
-
 pip install -e ".[whisperx]"
 ```
 
-WhisperX may also require FFmpeg and the appropriate CUDA stack when using an NVIDIA GPU.
+## Inspect an input
+
+```bash
+meika-vox ingest interview.m4a --project-id DEMO
+```
+
+The source asset records SHA-256, duration, codec, sample rate, channels, bitrate and container format.
 
 ## Transcribe
 
@@ -71,90 +72,88 @@ Use a project glossary for recurrent ASR errors, acronyms, terminology and place
 
 ```bash
 meika-vox transcribe interview.m4a \
-  --project-id DEMO \
+  --project-id SM26 \
   --language es \
   --model large-v3 \
-  --glossary project_glossary.json
+  --glossary configs/glossaries/santa_maria_2026.json
 ```
 
-See [Contextual normalization](docs/NORMALIZATION.md).
+Normalization never overwrites `text_raw`.
 
 ## Speaker diarization
-
-WhisperX uses pyannote for speaker diarization:
 
 ```bash
 export HF_TOKEN=hf_xxx
 meika-vox transcribe interview.m4a \
-  --project-id DEMO \
+  --project-id SM26 \
   --language es \
   --diarize \
   --min-speakers 2 \
   --max-speakers 8
 ```
 
-Speaker IDs remain technical labels such as `SPEAKER_00`. MEIKA Vox does not infer real identities.
+Diarization produces technical labels such as `SPEAKER_00`; it does not infer real identities.
 
-## Raw, normalized and reviewed are different data
-
-```text
-text_raw
-  ↓ declared project glossary
-text_normalized
-  ↓ human correction
-text_reviewed
-```
-
-Normalization never overwrites raw ASR output. Every glossary replacement is stored in `normalization_changes.json`.
-
-Human edits belong in an append-only `review_events.jsonl` audit trail. The review UI is a later milestone; the data contract is already prepared.
-
-## Speaker turns
-
-ASR segments are preserved as the atomic lineage unit. Consecutive segments from the same technical speaker can also be merged into derived `SpeakerTurn` objects for readable transcripts. Every turn keeps its source segment IDs.
-
-## Why this is different
-
-The canonical model is provider-independent:
+## Canonical hierarchy
 
 ```text
-WhisperX ─┐
-Deepgram ─┼─> ProviderResult -> TranscriptSegment -> Normalization -> QA -> Review
-NeMo ─────┘
+Word
+  ↓ many-to-one
+TranscriptSegment
+  ↓ many-to-one
+SpeakerTurn
 ```
 
-The downstream qualitative system therefore does not depend on one speech provider.
+`Word` keeps aligned token timestamps and optional confidence/speaker assignment. Segments preserve their `word_ids`; turns preserve both source segment IDs and word IDs.
 
-## QA
+## QA timestamp rule
 
-MEIKA Vox currently detects empty transcripts, timestamp-order errors, overlapping speech, unusually long segments, empty segment text and missing speaker assignment.
+Two checks are intentionally separate:
 
-Overlap is preserved as conversational information rather than automatically treated as a broken timestamp.
+```text
+current.start_ms < previous.start_ms
+→ TIMESTAMP_ORDER_ERROR
 
-## Data-engineering zones
+current.start_ms < max_end_seen
+→ OVERLAP_DETECTED
+```
+
+Overlap is not automatically an error: simultaneous speech can be legitimate in interviews and group sessions.
+
+## Santa María benchmark
+
+Two private-audio benchmark cases are declared under:
+
+```text
+benchmarks/santa_maria_2026/
+```
+
+No productive audio is committed. The benchmark can measure terminology recovery, detected speakers, normalization changes, QA flags and optional WER against a human-validated reference.
+
+```bash
+meika-vox benchmark /path/to/RUN_DIR \
+  --config benchmarks/santa_maria_2026/config.json \
+  --case-id SM26-LAS-CABRAS-A
+```
+
+## Data layers
 
 | Zone | Purpose | Mutability |
 |---|---|---|
-| **Raw** | Original media + source metadata + checksum | Immutable |
-| **Canonical** | Provider-independent segments, speakers and timestamps | Versioned |
-| **Normalized** | Conservative terminology corrections with audit log | Versioned |
+| **Raw** | Original media + immutable ASR text | Immutable |
+| **Canonical** | Words, segments, speakers, timestamps | Versioned |
+| **Normalized** | Deterministic terminology corrections | Versioned |
 | **Reviewed** | Human-validated text and speaker labels | Versioned |
 
 A transcript segment is **not** automatically evidence, and evidence is **not** automatically a finding.
 
 ## Privacy rule
 
-This public repository must never contain real project audio, productive transcripts, participant identities, consent records, credentials or restricted project data.
+Never commit real project audio, productive transcripts, participant identities, consent records, credentials or restricted project data.
 
-Project-specific glossaries that expose private information should remain in controlled storage.
+## Scope boundary
 
-See [SECURITY.md](SECURITY.md).
-
-## Roadmap
-
-Next: batch-folder ingestion, Parquet, review UI, review-event application and REFI-QDA interoperability.
-
-See [docs/ROADMAP.md](docs/ROADMAP.md).
+MEIKA Vox currently stops at the human-review boundary. Topic modelling, automatic coding, R workflows, REFI-QDA and Social Computer integration remain downstream work and are intentionally deferred until the primary-evidence pipeline is validated.
 
 ## License
 

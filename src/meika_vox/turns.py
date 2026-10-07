@@ -48,6 +48,11 @@ def build_speaker_turns(
                 speaker_label=first.speaker_label,
                 speaker_role=first.speaker_role,
                 source_segment_ids=[segment.segment_id for segment in bucket],
+                word_ids=[
+                    word_id
+                    for segment in bucket
+                    for word_id in segment.word_ids
+                ],
                 text_raw=_join([segment.text_raw for segment in bucket]),
                 text_normalized=_join(normalized_parts),
                 text_reviewed=reviewed_text,

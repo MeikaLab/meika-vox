@@ -1,11 +1,21 @@
-"""WhisperX provider with optional pyannote speaker diarization."""
+"""WhisperX provider with alignment and optional pyannote diarization."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-from .base import ProviderResult, ProviderSegment
+from .base import ProviderResult, ProviderSegment, ProviderWord
+
+
+def _confidence(value: object) -> float | None:
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    if 0 <= result <= 1:
+        return result
+    return None
 
 
 class WhisperXProvider:
@@ -96,23 +106,57 @@ class WhisperXProvider:
             diarization_engine = "pyannote.audio"
             diarization_model = "speaker-diarization-community-1"
 
-        segments = [
-            ProviderSegment(
-                start_ms=round(float(segment["start"]) * 1000),
-                end_ms=round(float(segment["end"]) * 1000),
-                text=str(segment.get("text", "")).strip(),
-                speaker=str(segment.get("speaker", "UNKNOWN")),
-                language=detected_language,
+        segments: list[ProviderSegment] = []
+        detected_speaker_ids: set[str] = set()
+
+        for segment in result.get("segments", []):
+            segment_speaker = str(segment.get("speaker", "UNKNOWN"))
+            if segment_speaker != "UNKNOWN":
+                detected_speaker_ids.add(segment_speaker)
+
+            words: list[ProviderWord] = []
+            for word in segment.get("words", []):
+                if word.get("start") is None or word.get("end") is None:
+                    continue
+                token = str(word.get("word", "")).strip()
+                if not token:
+                    continue
+                word_speaker = word.get("speaker") or segment.get("speaker")
+                speaker = str(word_speaker) if word_speaker is not None else None
+                if speaker and speaker != "UNKNOWN":
+                    detected_speaker_ids.add(speaker)
+                words.append(
+                    ProviderWord(
+                        start_ms=round(float(word["start"]) * 1000),
+                        end_ms=round(float(word["end"]) * 1000),
+                        token=token,
+                        speaker=speaker,
+                        confidence=_confidence(word.get("score")),
+                    )
+                )
+
+            segments.append(
+                ProviderSegment(
+                    start_ms=round(float(segment["start"]) * 1000),
+                    end_ms=round(float(segment["end"]) * 1000),
+                    text=str(segment.get("text", "")).strip(),
+                    speaker=segment_speaker,
+                    language=detected_language,
+                    words=tuple(words),
+                )
             )
-            for segment in result.get("segments", [])
-        ]
 
         return ProviderResult(
             provider="whisperx_local",
             asr_engine="whisperx/faster-whisper",
             asr_model=self.model_name,
-            segments=segments,
+            segments=tuple(segments),
+            language_requested=self.language,
             language_detected=detected_language,
+            alignment_engine="whisperx.align",
             diarization_engine=diarization_engine,
             diarization_model=diarization_model,
+            min_speakers=self.min_speakers,
+            max_speakers=self.max_speakers,
+            detected_speakers=len(detected_speaker_ids) if self.diarize else None,
         )

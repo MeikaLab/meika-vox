@@ -7,6 +7,7 @@ from pathlib import Path
 
 import typer
 
+from .benchmark import evaluate_run, load_benchmark_config
 from .export import write_bundle
 from .normalization import load_glossary
 from .pipeline import ingest_local, run_transcription
@@ -23,7 +24,7 @@ def ingest(
     audio: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
     project_id: str = typer.Option(..., "--project-id", help="Stable project identifier."),
 ) -> None:
-    """Fingerprint an input file without transcribing it."""
+    """Fingerprint and inspect one source file."""
     asset = ingest_local(audio, project_id)
     typer.echo(json.dumps(asset.model_dump(mode="json"), ensure_ascii=False, indent=2))
 
@@ -98,6 +99,39 @@ def transcribe(
     )
     run_dir = write_bundle(bundle, output)
     typer.echo(str(run_dir))
+
+
+@app.command()
+def benchmark(
+    run_dir: Path = typer.Argument(..., exists=True, file_okay=False, readable=True),
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False),
+    case_id: str = typer.Option(..., "--case-id"),
+    reference: Path | None = typer.Option(
+        None,
+        "--reference",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Optional human-validated transcript for WER.",
+    ),
+    output: Path | None = typer.Option(None, "--output", "-o"),
+) -> None:
+    """Evaluate one processed run against a declared benchmark case."""
+    benchmark_config = load_benchmark_config(config)
+    case = next(
+        (item for item in benchmark_config.cases if item.case_id == case_id),
+        None,
+    )
+    if case is None:
+        raise typer.BadParameter(f"Unknown case_id: {case_id}")
+
+    reference_text = reference.read_text(encoding="utf-8") if reference else None
+    report = evaluate_run(run_dir, case, reference_text=reference_text)
+    rendered = json.dumps(report, ensure_ascii=False, indent=2)
+
+    if output is not None:
+        output.write_text(rendered, encoding="utf-8")
+    typer.echo(rendered)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ def write_bundle(bundle: PipelineBundle, output_root: str | Path) -> Path:
 
     asset_path = run_dir / "asset.json"
     manifest_path = run_dir / "manifest.json"
+    words_jsonl = run_dir / "words.jsonl"
     raw_jsonl = run_dir / "transcript_raw.jsonl"
     normalized_jsonl = run_dir / "transcript_normalized.jsonl"
     turns_jsonl = run_dir / "speaker_turns.jsonl"
@@ -33,6 +34,7 @@ def write_bundle(bundle: PipelineBundle, output_root: str | Path) -> Path:
     qa_path = run_dir / "qa.json"
 
     asset_path.write_text(bundle.asset.model_dump_json(indent=2), encoding="utf-8")
+    _write_jsonl(words_jsonl, bundle.words)
 
     raw_segments = [
         segment.model_copy(update={"text_normalized": None, "text_reviewed": None})
@@ -58,17 +60,17 @@ def write_bundle(bundle: PipelineBundle, output_root: str | Path) -> Path:
         encoding="utf-8",
     )
     review_events_path.write_text("", encoding="utf-8")
-
     qa_path.write_text(
         json.dumps(bundle.qa_flags, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
     manifest = {
-        "schema_version": "0.2",
+        "schema_version": "0.3",
         "asset": bundle.asset.model_dump(mode="json"),
         "run": bundle.run.model_dump(mode="json"),
         "counts": {
+            "words": len(bundle.words),
             "segments": len(bundle.segments),
             "speaker_turns": len(bundle.turns),
             "normalization_changes": len(bundle.normalization_changes),
@@ -76,6 +78,7 @@ def write_bundle(bundle: PipelineBundle, output_root: str | Path) -> Path:
         },
         "outputs": {
             "asset": asset_path.name,
+            "words": words_jsonl.name,
             "transcript_raw": raw_jsonl.name,
             "transcript_normalized": normalized_jsonl.name,
             "speaker_turns": turns_jsonl.name,

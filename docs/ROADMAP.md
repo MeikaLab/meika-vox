@@ -1,33 +1,42 @@
 # Roadmap
 
-## v0.1 — Pipeline foundation
+## v0.1 — Primary evidence pipeline
 - [x] public repository and Apache-2.0 license
 - [x] canonical Pydantic contracts
 - [x] SHA-256 local ingestion
-- [x] stable IDs
+- [x] ffprobe duration/codec/sample-rate/channels/bitrate
+- [x] stable audio, segment, word and turn IDs
 - [x] provider boundary
-- [x] structural QA
-- [x] CLI ingestion command
-- [x] CI and tests
-- [x] WhisperX + pyannote provider
-- [x] run manifest persistence
-- [x] JSONL export
+- [x] WhisperX + alignment provider
+- [x] optional pyannote diarization
+- [x] word-level canonical contract and lineage
 - [x] raw vs normalized transcript layers
 - [x] project glossary normalization
 - [x] normalization audit trail
 - [x] speaker-turn derivation
+- [x] segment and word structural QA
+- [x] JSONL run bundle
 - [x] review-event contract
+- [x] Santa María benchmark harness and two declared cases
+- [x] CI and synthetic tests
 
-## v0.2 — Research-ready batch processing
+## v0.2 — Validate on real field audio
+- [ ] run two Santa María benchmark audios
+- [ ] human-correct reference excerpts for WER
+- [ ] evaluate Chilean Spanish and rural/room acoustics
+- [ ] evaluate toponyms, acronyms and technical vocabulary
+- [ ] evaluate diarization speaker consistency
+- [ ] refine Santa María glossary from observed errors
+- [ ] define benchmark acceptance thresholds
+
+## v0.3 — Research-ready batch processing
 - [ ] recursive folder ingestion
 - [ ] batch queue
 - [ ] Parquet exports
-- [ ] vocabulary/context benchmark harness
 - [ ] DOCX/SRT/VTT exports
-- [ ] audio/media technical metadata via ffprobe
 - [ ] idempotent rerun detection
 
-## v0.3 — Review and privacy
+## v0.4 — Review and privacy
 - [ ] local review UI
 - [ ] synchronized audio playback
 - [ ] speaker relabeling
@@ -35,14 +44,9 @@
 - [ ] PII flags and pseudonyms
 - [ ] review audit trail validation
 
-## v0.4 — Connectors and scale
-- [ ] Google Drive source adapter
-- [ ] PostgreSQL persistence
-- [ ] job orchestration
-- [ ] optional cloud providers
-
-## v0.5 — Qualitative handoff
-- [ ] REFI-QDA interoperability
-- [ ] reviewed-segment export contract
-- [ ] Evidence candidate adapter
-- [ ] reverse lineage: finding → segment → exact audio timestamp
+## Deferred until primary evidence is validated
+- REFI-QDA interoperability
+- topic modelling
+- automatic qualitative coding
+- R analysis workflows
+- Social Computer evidence handoff
