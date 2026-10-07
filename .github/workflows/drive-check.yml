@@ -1,0 +1,78 @@
+name: MEIKA Vox - Comprobar Drive
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/drive-check.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  drive-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Comprobar credenciales y acceso a Drive
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+        shell: python
+        run: |
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          names = ("GDRIVE_CLIENT_ID", "GDRIVE_CLIENT_SECRET", "GDRIVE_REFRESH_TOKEN")
+          missing = [name for name in names if not os.environ.get(name, "").strip()]
+          if missing:
+              print("::error::Faltan secretos: " + ", ".join(missing))
+              sys.exit(1)
+
+          def request_json(request, stage):
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as error:
+                  # Never print response bodies: they may contain credentials or user data.
+                  print(f"::error::{stage}: HTTP {error.code}. Revisar credenciales y permisos.")
+                  sys.exit(1)
+              except (urllib.error.URLError, TimeoutError):
+                  print(f"::error::{stage}: no se pudo conectar con Google.")
+                  sys.exit(1)
+              except (ValueError, TypeError):
+                  print(f"::error::{stage}: respuesta inesperada de Google.")
+                  sys.exit(1)
+
+          payload = urllib.parse.urlencode({
+              "client_id": os.environ["GDRIVE_CLIENT_ID"].strip(),
+              "client_secret": os.environ["GDRIVE_CLIENT_SECRET"].strip(),
+              "refresh_token": os.environ["GDRIVE_REFRESH_TOKEN"].strip(),
+              "grant_type": "refresh_token",
+          }).encode()
+          token_data = request_json(urllib.request.Request(
+              "https://oauth2.googleapis.com/token", data=payload,
+              headers={"Content-Type": "application/x-www-form-urlencoded"},
+          ), "Renovacion del token")
+          token = token_data.get("access_token")
+          if not isinstance(token, str) or not token:
+              print("::error::Google no devolvio un token de acceso.")
+              sys.exit(1)
+          print("::add-mask::" + token)
+          result = request_json(urllib.request.Request(
+              "https://www.googleapis.com/drive/v3/files?pageSize=1&fields=kind",
+              headers={"Authorization": "Bearer " + token},
+          ), "Consulta de Drive")
+          if result.get("kind") != "drive#fileList":
+              print("::error::Drive devolvio una respuesta inesperada.")
+              sys.exit(1)
+          print("Credenciales validas. Drive API responde correctamente.")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("### Conexion a Drive comprobada\n\n")
+              summary.write("Los tres secretos estan presentes, Google renovo el token y Drive respondio.\n\n")
+              summary.write("Esta prueba no transcribe audios ni comprueba permisos de escritura.\n")
