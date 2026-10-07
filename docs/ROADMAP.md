@@ -20,6 +20,15 @@
 - [x] Santa María benchmark harness and two declared cases
 - [x] CI and synthetic tests
 
+## v0.1.5 — Operational Colab adapter
+- [x] Google Drive mount and folder picker
+- [x] recursive audio discovery within selected folder
+- [x] resumable batch state
+- [x] skip completed source/configuration pairs
+- [x] continue after per-file failures
+- [x] human-readable activity-based TXT copies
+- [x] optional diarization toggle
+
 ## v0.2 — Validate on real field audio
 - [ ] run two Santa María benchmark audios
 - [ ] human-correct reference excerpts for WER
@@ -30,11 +39,11 @@
 - [ ] define benchmark acceptance thresholds
 
 ## v0.3 — Research-ready batch processing
-- [ ] recursive folder ingestion
+- [ ] general-purpose recursive folder ingestion outside the Colab adapter
 - [ ] batch queue
 - [ ] Parquet exports
 - [ ] DOCX/SRT/VTT exports
-- [ ] idempotent rerun detection
+- [ ] general-purpose idempotent rerun detection outside the Colab adapter
 
 ## v0.4 — Review and privacy
 - [ ] local review UI

@@ -33,6 +33,7 @@ meika_vox_output/
     └── <transcription_run_id>/
         ├── asset.json
         ├── manifest.json
+        ├── audio_qa.json
         ├── words.jsonl
         ├── transcript_raw.jsonl
         ├── transcript_normalized.jsonl
@@ -64,8 +65,10 @@ the whole batch and saves results under `MyDrive/MEIKA_Vox/Transcripciones`.
 
 Completed runs with the same source checksum and configuration are skipped on
 restart. Failures do not stop subsequent files and are retried on the next click.
-Changed audio or settings require a new run. `Lectura` contains TXT copies labelled
-with the source filename; `batch_last_report.json` summarizes the latest batch.
+Changed audio or settings require a new run. `Lectura` contains human-readable TXT
+copies named from the activity context (place / workshop / table / part), while the
+original source filename remains in the technical manifest. `batch_last_report.json`
+summarizes the latest batch.
 
 Speaker separation is an optional checkbox requiring `HF_TOKEN` and acceptance of
 the pyannote community model terms. Labels are speaker clusters, not verified

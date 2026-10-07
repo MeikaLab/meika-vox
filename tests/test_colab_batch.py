@@ -1,9 +1,8 @@
+# Import script as a standalone module because it is intentionally outside the package.
+import importlib.util
 from pathlib import Path
 
 from meika_vox import __version__
-
-# Import script as a standalone module because it is intentionally outside the package.
-import importlib.util
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "colab_batch.py"
 SPEC = importlib.util.spec_from_file_location("colab_batch", SCRIPT)
