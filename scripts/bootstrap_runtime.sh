@@ -17,6 +17,7 @@ source "$VENV_DIR/bin/activate"
 
 python -m pip install --upgrade pip
 python -m pip install -e ".[whisperx]"
+python -c "import nltk; nltk.download('punkt_tab', raise_on_error=True)"
 
 echo
 echo "Runtime installed."

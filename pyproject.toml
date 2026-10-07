@@ -21,7 +21,8 @@ dev = [
   "ruff>=0.8,<1",
 ]
 whisperx = [
-  "whisperx>=3.3",
+  "whisperx==3.8.6",
+  "transformers>=4.48,<5",
 ]
 
 [project.scripts]

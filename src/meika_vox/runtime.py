@@ -29,7 +29,10 @@ class RuntimeReport(BaseModel):
 
 
 def _module(name: str) -> bool:
-    return importlib.util.find_spec(name) is not None
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
 
 
 def inspect_runtime() -> RuntimeReport:
@@ -51,13 +54,15 @@ def inspect_runtime() -> RuntimeReport:
             cuda_available = False
 
     hf_token_present = bool(os.getenv("HF_TOKEN"))
-    asr_ready = bool(ffmpeg and ffprobe and whisperx)
+    asr_ready = bool(
+        ffmpeg and ffprobe and whisperx and torch_available and faster_whisper and ctranslate2
+    )
     diarization_ready = bool(asr_ready and pyannote and hf_token_present)
 
     repair_hint = None
     if not asr_ready:
         repair_hint = (
-            'Install FFmpeg and MEIKA Vox speech dependencies with '
+            "Install FFmpeg and MEIKA Vox speech dependencies with "
             'pip install -e ".[whisperx]" or run scripts/bootstrap_runtime.*.'
         )
     elif not diarization_ready:
@@ -97,7 +102,6 @@ def require_asr_runtime(*, diarize: bool = False) -> RuntimeReport:
         )
     if diarize and not report.diarization_ready:
         raise RuntimeError(
-            "Diarization runtime is incomplete. "
-            + (report.repair_hint or "Run meika-vox doctor.")
+            "Diarization runtime is incomplete. " + (report.repair_hint or "Run meika-vox doctor.")
         )
     return report
