@@ -5,11 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .contracts import (
-    NormalizationChange,
-    ReviewStatus,
-    TranscriptSegment,
-)
+from .contracts import NormalizationChange, ReviewStatus, TranscriptSegment
 
 
 _WORD = re.compile(r"[^\W_]+(?:['’\-][^\W_]+)*", flags=re.UNICODE)
