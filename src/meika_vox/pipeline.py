@@ -8,8 +8,10 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from . import __version__
+from .audio_qa import analyze_audio_quality
 from .contracts import (
     AudioAsset,
+    AudioQualityReport,
     NormalizationChange,
     RunStatus,
     SourceLocator,
@@ -29,6 +31,7 @@ from .turns import build_speaker_turns
 
 class PipelineBundle(BaseModel):
     asset: AudioAsset
+    audio_quality: AudioQualityReport | None
     run: TranscriptionRun
     words: list[Word]
     segments: list[TranscriptSegment]
