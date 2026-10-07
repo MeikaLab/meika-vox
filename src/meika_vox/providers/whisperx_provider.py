@@ -45,9 +45,14 @@ class WhisperXProvider:
         self.max_speakers = max_speakers
 
     def _runtime(self):
+        # Disable optional usage reporting before the speech engines create sessions.
+        os.environ["PYANNOTE_METRICS_ENABLED"] = "0"
         try:
+            import onnxruntime
             import torch
             import whisperx
+
+            onnxruntime.disable_telemetry_events()
         except ImportError as exc:
             raise RuntimeError(
                 'WhisperX is not installed. Run: pip install -e ".[whisperx]"'
@@ -66,6 +71,7 @@ class WhisperXProvider:
             device,
             compute_type=compute_type,
             language=self.language,
+            vad_method="silero",
         )
         result = model.transcribe(audio, batch_size=self.batch_size)
         detected_language = result.get("language") or self.language or "unknown"

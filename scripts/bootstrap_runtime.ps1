@@ -13,6 +13,7 @@ if (-not (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
 & $PythonBin -m venv $VenvDir
 & "$VenvDir\Scripts\python.exe" -m pip install --upgrade pip
 & "$VenvDir\Scripts\python.exe" -m pip install -e ".[whisperx]"
+& "$VenvDir\Scripts\python.exe" -c "import nltk; nltk.download('punkt_tab', raise_on_error=True)"
 
 Write-Host ""
 Write-Host "Runtime installed."
