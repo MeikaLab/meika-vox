@@ -24,8 +24,8 @@ def test_activity_label_for_las_cabras(tmp_path: Path) -> None:
     first.write_bytes(b"a")
     second.write_bytes(b"b")
 
-    assert batch._activity_label(first) == "Las_Cabras__Taller_1__Parte_1"
-    assert batch._activity_label(second) == "Las_Cabras__Taller_1__Parte_2"
+    assert batch._activity_label(first) == "Sector_2__Las_Cabras__Taller_01__Parte_01"
+    assert batch._activity_label(second) == "Sector_2__Las_Cabras__Taller_01__Parte_02"
 
 
 def test_activity_label_for_school_focus_group(tmp_path: Path) -> None:
@@ -39,8 +39,44 @@ def test_activity_label_for_school_focus_group(tmp_path: Path) -> None:
     audio = folder / "Grabacion mesa 1.m4a"
     audio.write_bytes(b"a")
 
-    assert batch._activity_label(audio) == "Escuela_Guillermo_Bañados__Mesa_1"
+    assert batch._activity_label(audio) == "Sector_4__Escuela_Guillermo_Bañados__Mesa_01"
 
 
 def test_version_import_smoke() -> None:
     assert isinstance(__version__, str)
+
+
+def test_canonical_filename_drives_sector_place_and_mesa(tmp_path: Path) -> None:
+    folder = tmp_path / "03 - Sector 3" / "02 - Taller 2"
+    folder.mkdir(parents=True)
+    audio = folder / (
+        "Encuentro territorial - Sector 3 - Calle El Medio - "
+        "Grupo 01 - Audio 01 CM.m4a"
+    )
+    audio.write_bytes(b"a")
+
+    assert batch._activity_label(audio) == (
+        "Sector_3__Calle_El_Medio__Mesa_01__Audio_01"
+    )
+
+
+def test_las_cabras_hides_person_label_in_readable_name(tmp_path: Path) -> None:
+    folder = tmp_path / "02 - Sector 2" / "01 - Taller 1 Las Cabras" / "Audio"
+    folder.mkdir(parents=True)
+    first = folder / (
+        "Encuentro territorial - Sector 2 - Las Cabras - "
+        "Mesa sin identificar - José Contreras.m4a"
+    )
+    second = folder / (
+        "Encuentro territorial - Sector 2 - Las Cabras - "
+        "Mesa sin identificar - José Contreras 2.m4a"
+    )
+    first.write_bytes(b"a")
+    second.write_bytes(b"b")
+
+    assert batch._activity_label(first) == (
+        "Sector_2__Las_Cabras__Mesa_sin_identificar__Parte_01"
+    )
+    assert batch._activity_label(second) == (
+        "Sector_2__Las_Cabras__Mesa_sin_identificar__Parte_02"
+    )

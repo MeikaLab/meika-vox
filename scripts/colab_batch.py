@@ -83,16 +83,72 @@ def _audio_part_key(audio: Path) -> tuple[str, int, str]:
     return (base.casefold(), suffix, stem.casefold())
 
 
+def _canonical_source_label(audio: Path) -> str | None:
+    """Derive a readable label from the canonical source filename when available."""
+    stem = audio.stem.strip()
+    parts = [part.strip() for part in stem.split(" - ") if part.strip()]
+    if len(parts) < 4:
+        return None
+
+    event = parts[0].casefold()
+    if event not in {"encuentro territorial", "grupo focal"}:
+        return None
+    if not re.fullmatch(r"Sector\s+\d+", parts[1], flags=re.IGNORECASE):
+        return None
+
+    sector_match = re.search(r"(\d+)", parts[1])
+    if sector_match is None:
+        return None
+    sector = f"Sector_{int(sector_match.group(1))}"
+    place = _clean_label(parts[2])
+
+    tail = parts[3:]
+    normalized_tail: list[str] = []
+    for item in tail:
+        item = re.sub(r"^Grupo\s+", "Mesa ", item, flags=re.IGNORECASE)
+        item = re.sub(r"\bgrupo\s+(\d+)\b", r"Mesa \1", item, flags=re.IGNORECASE)
+        item = re.sub(r"\bCM\b", "", item).strip()
+        if item:
+            normalized_tail.append(_clean_label(item))
+
+    # Las Cabras retained recorder/person labels in source names. Do not expose those
+    # in the human-readable transcript name; use deterministic part numbering instead.
+    if normalized_tail and normalized_tail[0].casefold() == "mesa_sin_identificar":
+        normalized_tail = [normalized_tail[0]]
+        siblings = sorted(discover_audio(audio.parent), key=_audio_part_key)
+        if len(siblings) > 1:
+            try:
+                part = siblings.index(audio) + 1
+            except ValueError:
+                part = 1
+            normalized_tail.append(f"Parte_{part:02d}")
+
+    return "__".join([sector, place, *normalized_tail])
+
+
 def _activity_label(audio: Path) -> str:
-    """Build a human-readable activity label from the Drive folder hierarchy."""
+    """Build a human-readable label with sector, place/activity and table."""
+    canonical = _canonical_source_label(audio)
+    if canonical is not None:
+        return canonical
+
     ancestors = [parent.name.strip() for parent in audio.parents]
+    sector = None
     mesa = None
     group_focal = None
     taller_number = None
     taller_place = None
 
     for name in ancestors:
-        mesa_match = re.fullmatch(r"MESA\s*(\d+)", name, flags=re.IGNORECASE)
+        sector_match = re.fullmatch(
+            r"\d+\s*-\s*Sector\s*(\d+)",
+            name,
+            flags=re.IGNORECASE,
+        )
+        if sector_match and sector is None:
+            sector = f"Sector_{int(sector_match.group(1))}"
+
+        mesa_match = re.fullmatch(r"MESA\s*(\d+).*", name, flags=re.IGNORECASE)
         if mesa_match and mesa is None:
             mesa = mesa_match.group(1)
 
@@ -109,15 +165,18 @@ def _activity_label(audio: Path) -> str:
             taller_place = taller_match.group(2).strip()
 
     components: list[str] = []
+    if sector:
+        components.append(sector)
+
     if group_focal:
         components.append(_clean_label(group_focal.title()))
     elif taller_place:
         components.append(_clean_label(taller_place.title()))
 
     if mesa:
-        components.append(f"Mesa_{mesa}")
+        components.append(f"Mesa_{int(mesa):02d}")
     elif taller_number:
-        components.append(f"Taller_{taller_number}")
+        components.append(f"Taller_{int(taller_number):02d}")
 
     if not components:
         parent = next(
@@ -132,7 +191,7 @@ def _activity_label(audio: Path) -> str:
             part = siblings.index(audio) + 1
         except ValueError:
             part = 1
-        components.append(f"Parte_{part}")
+        components.append(f"Parte_{part:02d}")
 
     return "__".join(components)
 
