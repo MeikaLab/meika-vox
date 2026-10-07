@@ -57,23 +57,25 @@ pip install -e ".[whisperx]"
 ## Santa María in Colab
 
 [Open the notebook in Colab](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/main/notebooks/MEIKA_Vox_Santa_Maria_Colab.ipynb).
-Select a GPU runtime, run all cells and authorize Google Drive. The notebook searches
-My Drive for the filenames you enter in `AUDIO_NAMES`. If a name is missing
-or ambiguous, specify an absolute path in `AUDIO_NAMES`.
+Select a GPU runtime, run all cells and authorize Google Drive. Choose a folder
+from the dropdown and click **Transcribir carpeta**. No filename entry is required.
+Vox discovers compatible audio in the selected folder and its subfolders, processes
+the whole batch and saves results under `MyDrive/MEIKA_Vox/Transcripciones`.
 
-The default produces text and timestamps without a Hugging Face token. Set
-`DIARIZE = True` to request speaker separation; this also requires `HF_TOKEN` and
-acceptance of the pyannote community model terms. Labels are speaker clusters,
-not verified participant identities.
+Completed runs with the same source checksum and configuration are skipped on
+restart. Failures do not stop subsequent files and are retried on the next click.
+Changed audio or settings require a new run. `Lectura` contains TXT copies labelled
+with the source filename; `batch_last_report.json` summarizes the latest batch.
 
-Vox requests telemetry opt-out through ONNX Runtime and pyannote APIs.
-This does not constitute a verified guarantee of zero external telemetry.
+Speaker separation is an optional checkbox requiring `HF_TOKEN` and acceptance of
+the pyannote community model terms. Labels are speaker clusters, not verified
+participant identities. Without it, text and timestamps do not require that token.
 
-Outputs are saved under `MyDrive/MEIKA_Vox/Transcripciones`. A run is reported as
-completed only after the process succeeds and exports nonempty transcript text.
-GPU uses `large-v3`; CPU uses `small` with batch size 1. Installation and first-run
-model downloads require internet. Model quality and speaker labels need review
-against the source audio.
+GPU uses `large-v3`; CPU uses `small` with batch size 1. Model downloads require
+internet. Colab must stay connected during processing; this is a resumable batch,
+not an unattended always-on service. Vox requests telemetry opt-out through ONNX
+Runtime and pyannote APIs, without claiming verified absence of external telemetry.
+Model quality and speaker labels still require review against the source audio.
 
 ## Runtime doctor
 
