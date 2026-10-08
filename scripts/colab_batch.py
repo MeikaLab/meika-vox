@@ -111,7 +111,7 @@ def _canonical_source_label(audio: Path) -> str | None:
         if item:
             normalized_tail.append(_clean_label(item))
 
-    # Las Cabras retained recorder/person labels in source names. Do not expose those
+    # Some source files retain recorder/person labels in their names. Do not expose those
     # in the human-readable transcript name; use deterministic part numbering instead.
     if normalized_tail and normalized_tail[0].casefold() == "mesa_sin_identificar":
         normalized_tail = [normalized_tail[0]]

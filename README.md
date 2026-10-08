@@ -1,227 +1,52 @@
 # MEIKA Vox
 
-**Traceable speech-to-data pipelines for qualitative and territorial research.**
+**Transcribe carpetas completas de audio desde tu Google Drive usando Google Colab y WhisperX.**
 
-MEIKA Vox turns interviews, workshops and group sessions into structured, auditable qualitative data.
+[![Abrir en Google Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/main/notebooks/MEIKA_Vox_Colab.ipynb)
 
-> Audio → metadata → transcription → aligned words → diarization → normalization → QA → human review
+Código abierto para procesar entrevistas, reuniones, talleres y grupos focales por lotes. Se ejecuta desde **tu propia cuenta de Google Colab** y guarda transcripciones preliminares y respaldos técnicos en **tu propio Google Drive**. No necesitas instalar Python ni tener cuenta de GitHub.
 
-MEIKA Vox is a **data pipeline first**. It preserves provenance, timestamps, speaker attribution, processing metadata and review state instead of treating a transcript as a final document.
+## Pasos
 
-## Working alpha
+1. Abre el botón **Abrir en Google Colab** y entra con tu cuenta Google.
+2. En **Entorno de ejecución → Cambiar tipo de entorno de ejecución**, elige GPU si está disponible.
+3. Pulsa **Ejecutar todas** y autoriza tu Google Drive.
+4. Escribe el nombre del proyecto, elige idioma y la carpeta de audios.
+5. Pulsa **Transcribir carpeta**. Los audios y subcarpetas se procesan en lote.
+6. Revisa los TXT y paquetes técnicos en `Mi unidad/MEIKA_Vox/Proyectos/<nombre_proyecto>/Transcripciones`.
 
-The current primary-evidence path is:
+El sistema reanuda el lote y omite los archivos ya completados con el mismo audio y configuración. Usa WhisperX **large-v3** con GPU disponible y **small** en CPU si no hay acelerador. Los tiempos y la disponibilidad de GPU de Colab son variables.
 
-```text
-local audio
-→ SHA-256 fingerprint + ffprobe metadata
-→ WhisperX transcription + forced alignment
-→ word-level timestamps
-→ optional pyannote diarization
-→ Word[] → TranscriptSegment[] → SpeakerTurn[]
-→ deterministic contextual normalization
-→ structural QA
-→ reproducible run bundle
-→ human-review boundary
-```
+## Características
 
-A successful run writes:
+- Reconocimiento de voz y alineación por palabra con WhisperX.
+- Separación de hablantes opcional con pyannote (requiere token y autorización).
+- Selección de proyecto, idioma y carpeta de Drive.
+- Glosario opcional en JSON aportado por cada usuario (no se aplica uno automáticamente).
+- Trazabilidad: SHA-256, metadatos ffprobe, texto original, normalización conservadora, timestamps y QA.
+- Resultados TXT y archivos JSON/JSONL; reporte del lote y reanudación de procesos interrumpidos.
 
-```text
-meika_vox_output/
-└── <audio_asset_id>/
-    └── <transcription_run_id>/
-        ├── asset.json
-        ├── manifest.json
-        ├── audio_qa.json
-        ├── words.jsonl
-        ├── transcript_raw.jsonl
-        ├── transcript_normalized.jsonl
-        ├── speaker_turns.jsonl
-        ├── transcript_normalized.txt
-        ├── normalization_changes.json
-        ├── review_events.jsonl
-        └── qa.json
-```
+Las transcripciones **requieren revisión humana** antes de usar citas como evidencia. MEIKA Vox no realiza por sí solo codificación o análisis cualitativo validado.
 
-## Install
+## Privacidad y límites
 
-Python 3.11+ and FFmpeg/ffprobe on `PATH` are required.
+El código está disponible públicamente, pero los audios del usuario **no se suben al repositorio GitHub**. Cada persona autoriza su propio Drive dentro de Colab. Se deben revisar las políticas de Google Colab, Drive y de los proveedores de modelos antes de procesar información sensible.
+
+Colab gratuito **no garantiza GPU, ejecución permanente ni sesiones de duración fija**. Debes mantener conectada la sesión durante el procesamiento. MEIKA Vox es un notebook con controles sencillos, no una aplicación web alojada 24/7.
+
+## Uso local para usuarios técnicos
+
+Requiere Python 3.11+, FFmpeg y ffprobe.
 
 ```bash
 git clone https://github.com/MeikaLab/meika-vox.git
 cd meika-vox
 python -m venv .venv
 pip install -e ".[whisperx]"
-```
-
-## Santa María in Colab
-
-[Open the notebook in Colab](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/main/notebooks/MEIKA_Vox_Santa_Maria_Colab.ipynb).
-Select a GPU runtime, run all cells and authorize Google Drive. Choose a folder
-from the dropdown and click **Transcribir carpeta**. No filename entry is required.
-Vox discovers compatible audio in the selected folder and its subfolders, processes
-the whole batch and saves results under `MyDrive/MEIKA_Vox/Transcripciones`.
-
-Completed runs with the same source checksum and configuration are skipped on
-restart. Failures do not stop subsequent files and are retried on the next click.
-Changed audio or settings require a new run. `Lectura` contains human-readable TXT
-copies named from the activity context (place / workshop / table / part), while the
-original source filename remains in the technical manifest. `batch_last_report.json`
-summarizes the latest batch.
-
-Speaker separation is an optional checkbox requiring `HF_TOKEN` and acceptance of
-the pyannote community model terms. Labels are speaker clusters, not verified
-participant identities. Without it, text and timestamps do not require that token.
-
-GPU uses `large-v3`; CPU uses `small` with batch size 1. Model downloads require
-internet. Colab must stay connected during processing; this is a resumable batch,
-not an unattended always-on service. Vox requests telemetry opt-out through ONNX
-Runtime and pyannote APIs, without claiming verified absence of external telemetry.
-Model quality and speaker labels still require review against the source audio.
-
-## Runtime doctor
-
-Before processing real audio, inspect the local runtime:
-
-```bash
-meika-vox doctor
-```
-
-For CI or deployment checks:
-
-```bash
 meika-vox doctor --strict
+meika-vox transcribe entrevista.m4a --project-id MI_PROYECTO --language es
 ```
 
-A transcription-ready runtime requires FFmpeg/ffprobe and the WhisperX speech dependencies. Diarization additionally requires pyannote model access and `HF_TOKEN`.
+Más información en [Arquitectura](docs/ARCHITECTURE.md) y [Estado actual](docs/CURRENT_STATE.md).
 
-### Bootstrap
-
-Linux/macOS:
-
-```bash
-bash scripts/bootstrap_runtime.sh
-```
-
-Windows PowerShell:
-
-```powershell
-.\scripts\bootstrap_runtime.ps1
-```
-
-Containerized:
-
-```bash
-docker build -t meika-vox .
-docker run --rm meika-vox doctor
-```
-
-## Inspect an input
-
-```bash
-meika-vox ingest interview.m4a --project-id DEMO
-```
-
-The source asset records SHA-256, duration, codec, sample rate, channels, bitrate and container format.
-
-## Transcribe
-
-```bash
-meika-vox transcribe interview.m4a --project-id DEMO --language es
-```
-
-Use a project glossary for recurrent ASR errors, acronyms, terminology and place names:
-
-```bash
-meika-vox transcribe interview.m4a \
-  --project-id SM26 \
-  --language es \
-  --model large-v3 \
-  --glossary configs/glossaries/santa_maria_2026.json
-```
-
-Normalization never overwrites `text_raw`.
-
-## Speaker diarization
-
-```bash
-export HF_TOKEN=hf_xxx
-meika-vox transcribe interview.m4a \
-  --project-id SM26 \
-  --language es \
-  --diarize \
-  --min-speakers 2 \
-  --max-speakers 8
-```
-
-Diarization produces technical labels such as `SPEAKER_00`; it does not infer real identities.
-
-## Canonical hierarchy
-
-```text
-Word
-  ↓ many-to-one
-TranscriptSegment
-  ↓ many-to-one
-SpeakerTurn
-```
-
-`Word` keeps aligned token timestamps and optional confidence/speaker assignment. Segments preserve their `word_ids`; turns preserve both source segment IDs and word IDs.
-
-## QA timestamp rule
-
-Two checks are intentionally separate:
-
-```text
-current.start_ms < previous.start_ms
-→ TIMESTAMP_ORDER_ERROR
-
-current.start_ms < max_end_seen
-→ OVERLAP_DETECTED
-```
-
-Overlap is not automatically an error: simultaneous speech can be legitimate in interviews and group sessions.
-
-## Santa María benchmark
-
-Two private-audio benchmark cases are declared under:
-
-```text
-benchmarks/santa_maria_2026/
-```
-
-No productive audio is committed. The benchmark can measure terminology recovery, detected speakers, normalization changes, QA flags and optional WER against a human-validated reference.
-
-```bash
-meika-vox benchmark /path/to/RUN_DIR \
-  --config benchmarks/santa_maria_2026/config.json \
-  --case-id SM26-LAS-CABRAS-A
-```
-
-## Data layers
-
-| Zone | Purpose | Mutability |
-|---|---|---|
-| **Raw** | Original media + immutable ASR text | Immutable |
-| **Canonical** | Words, segments, speakers, timestamps | Versioned |
-| **Normalized** | Deterministic terminology corrections | Versioned |
-| **Reviewed** | Human-validated text and speaker labels | Versioned |
-
-A transcript segment is **not** automatically evidence, and evidence is **not** automatically a finding.
-
-## Privacy rule
-
-Never commit real project audio, productive transcripts, participant identities, consent records, credentials or restricted project data.
-
-## Scope boundary
-
-MEIKA Vox currently stops at the human-review boundary. Topic modelling, automatic coding, R workflows, REFI-QDA and Social Computer integration remain downstream work and are intentionally deferred until the primary-evidence pipeline is validated.
-
-## License
-
-Apache License 2.0.
-
----
-
-**MEIKA LAB** · Open R&D for social, qualitative and territorial intelligence.
+**Licencia Apache-2.0.** **MEIKA LAB** · Desarrollo abierto para investigación social y territorial.

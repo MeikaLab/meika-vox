@@ -11,35 +11,35 @@ batch = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(batch)
 
 
-def test_activity_label_for_las_cabras(tmp_path: Path) -> None:
+def test_activity_label_for_valle_verde(tmp_path: Path) -> None:
     folder = (
         tmp_path
         / "02 - Sector 2"
-        / "01 - Taller 1 Las Cabras"
+        / "01 - Taller 1 Valle Verde"
         / "Audio"
     )
     folder.mkdir(parents=True)
-    first = folder / "Jose Contreras.m4a"
-    second = folder / "Jose Contreras 2.m4a"
+    first = folder / "Grabador X.m4a"
+    second = folder / "Grabador X 2.m4a"
     first.write_bytes(b"a")
     second.write_bytes(b"b")
 
-    assert batch._activity_label(first) == "Sector_2__Las_Cabras__Taller_01__Parte_01"
-    assert batch._activity_label(second) == "Sector_2__Las_Cabras__Taller_01__Parte_02"
+    assert batch._activity_label(first) == "Sector_2__Valle_Verde__Taller_01__Parte_01"
+    assert batch._activity_label(second) == "Sector_2__Valle_Verde__Taller_01__Parte_02"
 
 
 def test_activity_label_for_school_focus_group(tmp_path: Path) -> None:
     folder = (
         tmp_path
         / "04 - Sector 4"
-        / "GRUPO FOCAL ESCUELA GUILLERMO BAÑADOS"
+        / "GRUPO FOCAL ESCUELA LOS ALERCES"
         / "MESA 1"
     )
     folder.mkdir(parents=True)
     audio = folder / "Grabacion mesa 1.m4a"
     audio.write_bytes(b"a")
 
-    assert batch._activity_label(audio) == "Sector_4__Escuela_Guillermo_Bañados__Mesa_01"
+    assert batch._activity_label(audio) == "Sector_4__Escuela_Los_Alerces__Mesa_01"
 
 
 def test_version_import_smoke() -> None:
@@ -60,23 +60,23 @@ def test_canonical_filename_drives_sector_place_and_mesa(tmp_path: Path) -> None
     )
 
 
-def test_las_cabras_hides_person_label_in_readable_name(tmp_path: Path) -> None:
-    folder = tmp_path / "02 - Sector 2" / "01 - Taller 1 Las Cabras" / "Audio"
+def test_valle_verde_hides_person_label_in_readable_name(tmp_path: Path) -> None:
+    folder = tmp_path / "02 - Sector 2" / "01 - Taller 1 Valle Verde" / "Audio"
     folder.mkdir(parents=True)
     first = folder / (
-        "Encuentro territorial - Sector 2 - Las Cabras - "
-        "Mesa sin identificar - José Contreras.m4a"
+        "Encuentro territorial - Sector 2 - Valle Verde - "
+        "Mesa sin identificar - Grabador X.m4a"
     )
     second = folder / (
-        "Encuentro territorial - Sector 2 - Las Cabras - "
-        "Mesa sin identificar - José Contreras 2.m4a"
+        "Encuentro territorial - Sector 2 - Valle Verde - "
+        "Mesa sin identificar - Grabador X 2.m4a"
     )
     first.write_bytes(b"a")
     second.write_bytes(b"b")
 
     assert batch._activity_label(first) == (
-        "Sector_2__Las_Cabras__Mesa_sin_identificar__Parte_01"
+        "Sector_2__Valle_Verde__Mesa_sin_identificar__Parte_01"
     )
     assert batch._activity_label(second) == (
-        "Sector_2__Las_Cabras__Mesa_sin_identificar__Parte_02"
+        "Sector_2__Valle_Verde__Mesa_sin_identificar__Parte_02"
     )

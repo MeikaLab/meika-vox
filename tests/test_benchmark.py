@@ -5,14 +5,14 @@ from meika_vox.benchmark import BenchmarkCase, evaluate_run, word_error_rate
 
 
 def test_word_error_rate_exact_match() -> None:
-    assert word_error_rate("Santa María", "Santa Maria") == 0
+    assert word_error_rate("Ciudad Límite", "Ciudad Limite") == 0
 
 
 def test_benchmark_measures_terms_and_speakers(tmp_path: Path) -> None:
     segments = [
         {
-            "text_raw": "Nos vemos en Las Cabras.",
-            "text_normalized": "Nos vemos en Las Cabras.",
+            "text_raw": "Nos vemos en Valle Verde.",
+            "text_normalized": "Nos vemos en Valle Verde.",
             "speaker_cluster_id": "SPEAKER_00",
         },
         {
@@ -29,10 +29,10 @@ def test_benchmark_measures_terms_and_speakers(tmp_path: Path) -> None:
     (tmp_path / "qa.json").write_text("[]", encoding="utf-8")
 
     case = BenchmarkCase(
-        case_id="SM26-TEST",
+        case_id="DEMO-TEST",
         label="test",
         term_groups={
-            "toponyms": ["Las Cabras"],
+            "toponyms": ["Valle Verde"],
             "services": ["Estación Médico Rural"],
         },
         expected_speaker_min=2,
@@ -41,7 +41,7 @@ def test_benchmark_measures_terms_and_speakers(tmp_path: Path) -> None:
     report = evaluate_run(
         tmp_path,
         case,
-        reference_text="Nos vemos en Las Cabras. La Estación Médico Rural es importante.",
+        reference_text="Nos vemos en Valle Verde. La Estación Médico Rural es importante.",
     )
 
     assert report["word_error_rate"] == 0

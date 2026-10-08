@@ -80,9 +80,9 @@ Audio
 
 Examples:
 
-- `Las_Cabras__Taller_1__Parte_1__Transcripcion.txt`
-- `Las_Cabras__Taller_1__Parte_2__Transcripcion.txt`
-- `Escuela_Guillermo_Bañados__Mesa_1__Transcripcion.txt`
+- `Valle_Verde__Taller_1__Parte_1__Transcripcion.txt`
+- `Valle_Verde__Taller_1__Parte_2__Transcripcion.txt`
+- `Escuela_Los_Alerces__Mesa_1__Transcripcion.txt`
 
 ### Technical
 
@@ -114,7 +114,7 @@ Examples:
 - speaker turns;
 - structural QA;
 - technical exports;
-- Santa María benchmark harness;
+- benchmark harness;
 - recursive Colab folder discovery;
 - resumable batch state;
 - human-readable activity-based filenames;
@@ -122,7 +122,7 @@ Examples:
 
 ### Still pending / not proven complete
 
-- systematic benchmark of real Santa María transcripts against human reference;
+- systematic benchmark of real field transcripts against human reference;
 - diarization quality validation on real group sessions;
 - synchronized human review UI;
 - application of review events into a reviewed transcript;

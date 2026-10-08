@@ -17,7 +17,7 @@
 - [x] segment and word structural QA
 - [x] JSONL run bundle
 - [x] review-event contract
-- [x] Santa María benchmark harness and two declared cases
+- [x] benchmark harness
 - [x] CI and synthetic tests
 
 ## v0.1.5 — Operational Colab adapter
@@ -30,12 +30,12 @@
 - [x] optional diarization toggle
 
 ## v0.2 — Validate on real field audio
-- [ ] run two Santa María benchmark audios
+- [ ] run two field benchmark audios
 - [ ] human-correct reference excerpts for WER
 - [ ] evaluate Chilean Spanish and rural/room acoustics
 - [ ] evaluate toponyms, acronyms and technical vocabulary
 - [ ] evaluate diarization speaker consistency
-- [ ] refine Santa María glossary from observed errors
+- [ ] refine project glossaries from observed errors
 - [ ] define benchmark acceptance thresholds
 
 ## v0.3 — Research-ready batch processing
