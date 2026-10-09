@@ -3,9 +3,11 @@
 1. Abre el [cuaderno público](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/main/notebooks/MEIKA_Vox_Colab.ipynb).
 2. Selecciona GPU en **Entorno de ejecución → Cambiar tipo de entorno de ejecución**, si está disponible.
 3. Pulsa ▶ en **Preparar y abrir MEIKA Vox**, justo debajo de las instrucciones. Espera y autoriza Drive; el panel aparece en esa misma celda, sin bajar al final.
-4. En el primer paso entra a la carpeta de tus grabaciones y pulsa **Usar esta carpeta**. La ruta manual queda en una opción desplegable.
-5. En el segundo paso escribe el proyecto y pulsa **Comenzar transcripción**. Se incluyen todos los audios; puedes desmarcar archivos en **Elegir algunos audios**. El idioma por defecto es español. Idioma, voces y glosario están en **Opciones adicionales**.
-6. El tercer paso muestra el audio actual, la etapa y el balance. Al terminar aparecen la descarga del ZIP y, si hace falta, **Reintentar pendientes**. Puedes volver a las opciones para corregir la configuración. Los TXT están en `MEIKA_Vox/Proyectos/<proyecto>/Transcripciones/Lectura`.
+4. Elige una carpeta en **Abrir carpeta**. Se abre y busca automáticamente, incluyendo subcarpetas. Para volver, pulsa **Volver a la carpeta anterior**. Si está vacía, el panel explica qué archivos ve. **Actualizar audios** repite la búsqueda si agregaste archivos a Drive.
+5. Pulsa **Transcribir N audios**. El proyecto toma el nombre de la carpeta y el idioma es español. Puedes excluir audios mediante casillas y cambiar idioma, voces o glosario en **Opciones adicionales**. También puedes escribir una ruta exacta en la sección opcional y pulsar **Abrir ruta**.
+6. Debajo aparece el progreso y, al terminar, la vista previa del primer texto, la descarga del ZIP y los reintentos si hubo errores. Los TXT quedan en `MEIKA_Vox/Proyectos/<proyecto>/Transcripciones/Lectura`.
+
+Se admiten MP3, M4A, WAV, FLAC, OGG, AAC, OPUS, WMA, AIFF y contenedores MP4, WEBM, 3GP y MKV con audio. Un archivo de video sin pista de audio fallará durante la comprobación y quedará pendiente. Los accesos directos de Drive y enlaces a carpetas compartidas pueden requerir una carpeta accesible dentro de Mi unidad.
 
 El enlace del panel busca el nombre del proyecto en Drive; no es un enlace directo a una carpeta determinada. El navegador de esta versión trabaja dentro de **Mi unidad**. Las unidades compartidas y los enlaces arbitrarios de carpetas no están implementados.
 

@@ -2,7 +2,7 @@
 
 **Transcribe carpetas completas de audio desde tu Google Drive usando Google Colab y WhisperX.**
 
-> La interfaz renovada está en revisión en la [PR #4](https://github.com/MeikaLab/meika-vox/pull/4). [Probar la versión 0.2.0 en Colab](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/feat/colab-simple-user-mode-20261009/notebooks/MEIKA_Vox_Colab_Pruebas.ipynb). El enlace de main conserva la versión anterior hasta aprobar la publicación.
+> El panel público permite elegir una carpeta, transcribir y descargar textos en una misma pantalla.
 
 [![Abrir en Google Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/main/notebooks/MEIKA_Vox_Colab.ipynb)
 
@@ -13,8 +13,8 @@ Código abierto para procesar entrevistas, reuniones, talleres y grupos focales 
 1. Abre el botón **Abrir en Google Colab** y entra con tu cuenta Google.
 2. En **Entorno de ejecución → Cambiar tipo de entorno de ejecución**, elige GPU si está disponible.
 3. Pulsa ▶ en **Preparar y abrir MEIKA Vox** y autoriza tu Drive. El panel aparece arriba, en esa misma celda.
-4. En el panel elige una carpeta específica de Mi unidad y pulsa **Buscar audios aquí**.
-5. Confirma proyecto, idioma y audios. Pulsa **Transcribir seleccionados**.
+4. Elige una carpeta de Mi unidad en la lista: se abre y busca los audios automáticamente.
+5. Pulsa **Transcribir N audios**. Se usa español y el nombre de la carpeta como proyecto; puedes cambiarlos en el panel.
 6. Descarga el ZIP de textos o revisa `Mi unidad/MEIKA_Vox/Proyectos/<nombre_proyecto>/Transcripciones/Lectura`.
 
 [Guía breve: voces, progreso, recuperación y límites](docs/COLAB_USUARIOS.md).

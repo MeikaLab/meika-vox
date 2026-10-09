@@ -20,3 +20,12 @@ def test_public_notebook_is_generic() -> None:
     assert "glossary_input" in panel
     assert "batch.process_folder" in panel
     assert "SM26" not in content
+
+
+def test_notebook_does_not_print_internal_widget_dictionary():
+    notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+    code = next(c for c in notebook["cells"] if c["cell_type"] == "code")
+    last = ast.parse("".join(code["source"])).body[-1]
+    assert isinstance(last, ast.Assign)
+    assert isinstance(last.value, ast.Call)
+    assert last.value.func.attr == "build_panel"
