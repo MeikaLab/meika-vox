@@ -84,9 +84,9 @@ class IsolatedWhisperXProvider:
                 raise RuntimeError("El proceso del motor terminó inesperadamente.")
 
     def _native_diagnostic(self):
-        raw = "\\n".join(self._stderr_tail)[-2500:]
-        raw = re.sub(r"hf_[a-zA-Z0-9_\\-]{12,}", "[CREDENCIAL]", raw)
-        raw = re.sub(r"(?i)(bearer\\s+)\\S+", r"\\1[CREDENCIAL]", raw)
+        raw = "\n".join(self._stderr_tail)[-2500:]
+        raw = re.sub(r"hf_[a-zA-Z0-9_-]{12,}", "[CREDENCIAL]", raw)
+        raw = re.sub(r"(?i)(bearer\s+)\S+", r"\1[CREDENCIAL]", raw)
         return raw or "No hubo salida de diagnóstico nativo"
 
     def check_diarization(self):
