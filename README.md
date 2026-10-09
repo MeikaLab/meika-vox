@@ -2,6 +2,8 @@
 
 **Transcribe carpetas completas de audio desde tu Google Drive usando Google Colab y WhisperX.**
 
+> La interfaz renovada está en revisión en la [PR #4](https://github.com/MeikaLab/meika-vox/pull/4). [Probar la versión 0.2.0 en Colab](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/feat/colab-simple-user-mode-20261009/notebooks/MEIKA_Vox_Colab_Pruebas.ipynb). El enlace de main conserva la versión anterior hasta aprobar la publicación.
+
 [![Abrir en Google Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/main/notebooks/MEIKA_Vox_Colab.ipynb)
 
 Código abierto para procesar entrevistas, reuniones, talleres y grupos focales por lotes. Se ejecuta desde **tu propia cuenta de Google Colab** y guarda transcripciones preliminares y respaldos técnicos en **tu propio Google Drive**. No necesitas instalar Python ni tener cuenta de GitHub.
