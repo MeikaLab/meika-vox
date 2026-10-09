@@ -9,10 +9,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import UTC, datetime
 import threading
 import time
 import unicodedata
+from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
 from urllib.parse import quote
@@ -32,10 +32,10 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     from IPython.display import display
 
     from meika_vox.export import write_bundle
-    from meika_vox.redact import redact, tail
     from meika_vox.normalization import load_glossary
     from meika_vox.pipeline import run_transcription
     from meika_vox.providers.isolated_provider import IsolatedWhisperXProvider as WhisperXProvider
+    from meika_vox.redact import redact, tail
     from meika_vox.runtime import inspect_runtime
 
     spec = importlib.util.spec_from_file_location("vox_batch", repo / "scripts/colab_batch.py")
