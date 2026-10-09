@@ -332,7 +332,12 @@ def process_folder(
                             break
                     except (OSError, ValueError, KeyError, TypeError):
                         continue
-            if not force and isinstance(old, str) and complete_run(Path(old)):
+            old_valid = not force and isinstance(old, str) and complete_run(Path(old))
+            if old_valid:
+                identity = json.loads((Path(old) / "manifest.json").read_text(encoding="utf-8"))
+                if identity["asset"]["checksum_sha256"] != checksum:
+                    old_valid = False
+            if old_valid:
                 text = readable_copy(audio, Path(old), output, checksum)
                 cached = json.loads((Path(old) / "manifest.json").read_text(encoding="utf-8"))
                 report["skipped"].append({"audio": str(audio), "text": str(text),

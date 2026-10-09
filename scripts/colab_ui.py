@@ -311,7 +311,8 @@ def build_panel(repo: Path, root: Path) -> dict:
                             for i in report[key]}
                 state["failed"] += [p for p in selected if str(p) not in reviewed]
                 archive = output / "Transcripciones.zip"
-                state["archive"] = archive if archive.is_file() else None
+                state["archive"] = (archive if archive.is_file()
+                                    and (report["completed"] or report["skipped"]) else None)
                 has_pending = bool(state["failed"])
                 progress.bar_style = "warning" if has_pending else "success"
                 warned = sum(bool(i.get("warnings")) for key in ("completed", "skipped")

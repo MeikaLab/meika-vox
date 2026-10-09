@@ -144,3 +144,25 @@ def test_provider_caches_models_and_preserves_text_after_diarization_failure(mon
     assert first.segments[0].text == second.segments[0].text == "Hola"
     assert first.warnings and first.diarization_engine is None
     assert "must not appear" not in first.warnings[0]
+
+
+def test_resume_index_cannot_assign_another_recording(tmp_path):
+    folder = tmp_path / "audios"
+    folder.mkdir()
+    first, second = folder / "first.wav", folder / "second.wav"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    output = tmp_path / "output"
+    wrong_run = write_bundle(bundle_for(second), output)
+    command = ["vox", "--project-id", "demo"]
+    key = batch.configuration_key(command) + ":" + batch.fingerprint(first)
+    (output / "batch_resume.json").write_text(json.dumps({key: str(wrong_run)}))
+    calls = []
+
+    def runner(audio, destination):
+        calls.append(audio)
+        return write_bundle(bundle_for(audio), destination)
+
+    result = batch.process_folder(folder, output, command, selected=[first], runner=runner)
+    assert calls == [first]
+    assert len(result["completed"]) == 1 and not result["skipped"]

@@ -34,7 +34,11 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
 
     monkeypatch.setattr(meika_vox.providers.whisperx_provider, "WhisperXProvider", PanelProvider)
 
+    failure = {"enabled": False}
+
     def fake_pipeline(audio, project_id, provider, **kwargs):
+        if failure["enabled"]:
+            raise RuntimeError("Synthetic failure")
         return original_pipeline(audio, project_id, provider, **kwargs,
                                  media_probe=fake_media_probe,
                                  audio_quality_analyzer=fake_audio_quality)
@@ -74,3 +78,12 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
     assert len(manifests) == 1
     manifest = json.loads(manifests[0].read_text())
     assert manifest["asset"]["source_path"] == str(folder / "audio.wav")
+    # A failed new batch must not offer the ZIP from the previous successful batch.
+    failure["enabled"] = True
+    (folder / "audio.wav").write_bytes(b"new recording")
+    panel["start"].click()
+    deadline = time.monotonic() + 10
+    while panel["state"]["busy"] and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert panel["state"]["archive"] is None
+    assert not panel["retry"].disabled

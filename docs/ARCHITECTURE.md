@@ -90,25 +90,30 @@ The raw machine transcript is never overwritten.
 
 ## Operational layer
 
-The Colab notebook is an **operational adapter**, not a production user interface.
+The Colab notebook prepares dependencies and mounts Drive, then imports
+`scripts/colab_ui.py`. The guided widgets browse only the selected folder and
+call `scripts/colab_batch.py` with a reusable provider and a local processing
+callback. The CLI remains available for technical users.
 
-```text
-Google Drive folder
-  ↓
-Colab folder picker
-  ↓
-recursive audio discovery
-  ↓
-MEIKA Vox CLI
-  ↓
-resumable/idempotent batch state
-  ↓
-MyDrive/MEIKA_Vox/Transcripciones
-  ├── technical run bundles
-  └── Lectura/*.txt
-```
+Each selected recording is copied temporarily into the runtime. Ingestion, acoustic
+QA, recognition and alignment operate locally. Source metadata is restored to the
+original Drive path before export. The complete bundle is copied into Drive and
+verified before its resume index is updated. Original audio is never moved.
 
-Diarization is optional and requires `HF_TOKEN`.
+Resume keys include the audio checksum and transcription settings, excluding UI
+commits, executable paths and batch sizes. Manifests store the settings key and
+file checksums, allowing recovery after an interrupted index write. Legacy results
+are adopted only when the recorded configuration is unambiguous.
+
+The panel worker runs in a background thread so controls and elapsed-time updates
+remain responsive. A runtime file lock prevents overlapping batches. Stopping waits
+until the current file is saved; a terminated Colab runtime may require repeating
+that file. The archive includes only validated texts from the selected batch.
+
+Diarization uses pyannote and reads `HF_TOKEN` from Colab Secrets. Preflight loads the
+actual pipeline before starting audio. A subsequent diarization failure can preserve
+aligned text with unknown voices and a QA warning. This fallback is opt-in at the
+provider boundary and enabled in the user panel; CLI behavior remains strict.
 
 ## Processing zones
 
