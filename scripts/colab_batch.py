@@ -139,7 +139,13 @@ def complete_run(run: Path) -> bool:
                 return False
             if count_key == "segments" and not records:
                 return False
-        for name, checksum in manifest.get("checksums", {}).items():
+        checksums = manifest.get("checksums")
+        if not isinstance(checksums, dict) or not checksums:
+            return False
+        expected = {p.name for p in run.iterdir() if p.is_file() and p.name != "manifest.json"}
+        if set(checksums) != expected:
+            return False
+        for name, checksum in checksums.items():
             target = run / name
             if target.parent != run or fingerprint(target) != checksum:
                 return False
