@@ -18,7 +18,7 @@ Con GPU se utiliza WhisperX **large-v3**. Sin GPU, el panel exige aceptar expres
 El panel presenta tres modalidades en este orden:
 
 - **Solo transcribir · sin token:** texto con tiempos, sin atribuir voces. Seleccionada por defecto.
-- **Separar hablantes · sin token — próximamente:** Sherpa-ONNX pendiente de integrar. El botón Transcribir se bloquea para no prometer voces que todavía no genera.
+- **Separar hablantes · sin token (experimental):** Sherpa-ONNX descarga modelos públicos la primera vez; no pide cuenta de Hugging Face. Su calidad en español está pendiente de validar.
 - **Separar hablantes · con token:** pyannote, con instrucciones de acceso visibles únicamente al elegirlo.
 
 **Separar hablantes** agrega etiquetas de voz; no identifica personas y puede fallar con solapamientos. Para activarlo:
@@ -31,7 +31,9 @@ El panel presenta tres modalidades en este orden:
 
 La clave se lee desde Secretos y no se escribe en el cuaderno ni en los resultados. Un fallo inicial de acceso bloquea el lote hasta corregirlo o desactivar la opción. Si la separación falla después de transcribir, se conserva el texto con una observación y voces sin identificar. Para generar otra versión con voces, selecciona esos audios y activa **Crear una nueva versión**; esta versión vuelve a ejecutar el reconocimiento.
 
-pyannote es el único motor de voces conectado. Nemotron y Sherpa-ONNX se describen como candidatos; no son opciones ejecutables ni existe una comparación de calidad validada en el proyecto.
+Sherpa y pyannote están conectados al mismo reconocimiento WhisperX. Sherpa ejecuta las voces en CPU, aunque WhisperX use GPU. En **N.º de voces**, 0 significa detección automática; puedes indicar el número exacto si lo conoces. No hay una comparación de calidad validada que demuestre cuál es mejor. Nemotron sigue fuera del panel.
+
+El modelo de segmentación ONNX de Sherpa deriva de pyannote 3.0; no es Community-1. Se combina con `nemo_en_titanet_small.onnx`, descargado de las publicaciones oficiales de Sherpa. La licencia del paquete se conserva con el modelo en la caché. Fuentes: [modelos](https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html) y [API Python](https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/python.html).
 
 ## Progreso y recuperación
 
@@ -39,7 +41,7 @@ La barra mide archivos revisados, incluidos los que fallan. El balance distingue
 
 **Detener después de este audio** guarda el resultado actual antes de parar. **Reintentar pendientes** procesa errores y archivos no iniciados. Si Colab pierde su sesión, vuelve a ejecutar todo y selecciona el mismo proyecto, audios y configuración. Se omiten resultados íntegros y se recuperan manifiestos válidos si se perdió el índice. El audio que estaba en curso puede repetirse: no hay reanudación interna por fragmentos.
 
-Los cambios visuales, la ruta del ejecutable y el tamaño del batch no invalidan los resultados. Cambiar el modelo, idioma, glosario o solicitar voces sí puede producir otra ejecución. La migración de índices antiguos adopta solo resultados verificables del mismo proyecto/modelo/idioma, con el mismo estado de voces y sin normalizaciones; en casos ambiguos se conserva la versión anterior y se genera otra.
+Los cambios visuales, la ruta del ejecutable y el tamaño del batch no invalidan los resultados. Cambiar el modelo, idioma, glosario, motor de voces o número de voces sí puede producir otra ejecución. La migración de índices antiguos adopta solo resultados verificables del mismo proyecto/modelo/idioma, con el mismo estado de voces y sin normalizaciones; en casos ambiguos se conserva la versión anterior y se genera otra.
 
 Los modelos se reutilizan durante un lote y se liberan al terminar. Los audios se copian temporalmente a la máquina de Colab; los originales de Drive se conservan. Los paquetes técnicos de cada ejecución mantienen identificadores distintos, comprobaciones de integridad, texto original, tiempos y controles QA. Los TXT de Lectura representan la última versión generada de cada grabación.
 

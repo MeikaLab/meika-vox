@@ -91,10 +91,15 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     diarize = w.Checkbox(value=False, description="Distinguir hablantes (opcional)")
     mode = w.RadioButtons(options=[
         ("Solo transcribir · sin token", "text"),
-        ("Separar hablantes · sin token — próximamente", "sherpa"),
+        ("Separar hablantes · sin token (experimental)", "sherpa"),
         ("Separar hablantes · con token", "pyannote"),
     ], value="text", layout=w.Layout(width="95%"))
     mode_help = w.HTML()
+    speaker_count = w.BoundedIntText(value=0, min=0, max=30, description="N.º de voces:")
+    speaker_count.style.description_width = "initial"
+    speaker_count_help = w.HTML(
+        "Opcional: 0 = detección automática. Indica un número solo si lo sabes.")
+    speaker_options = w.VBox([speaker_count, speaker_count_help])
     speaker_help = w.HTML(
         "Voz 1, Voz 2… No identifica personas. Puede fallar con voces simultáneas. "
                           "Requiere una cuenta gratuita y clave de Hugging Face.")
@@ -135,7 +140,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     done_event = threading.Event()
     controls = [project_input, language, folder, folders, up, enter, scan, recursive,
                 recordings, cpu_consent, mode, diarize, check, glossary_input, force,
-                find, found_folders]
+                find, found_folders, speaker_count]
 
     def note(message):
         details.append_stdout(re.sub(r"hf_[A-Za-z0-9]+", "[clave oculta]", str(message)) + "\n")
@@ -166,8 +171,6 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         if not recordings.value:
             reason = "Selecciona al menos un audio."
 
-        elif mode.value == "sherpa":
-            reason = "La separación sin token aún no está disponible. Elige otra modalidad."
         elif not gpu and not cpu_consent.value:
             reason = "Activa una GPU o marca Continuar sin GPU para comenzar."
         start.disabled = state["busy"] or state["finding"] or bool(reason)
@@ -380,9 +383,6 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     def launch(selected, access_only=False):
         if state["busy"] or state["finding"]:
             return
-        if mode.value == "sherpa":
-            update_stage("Separación sin token pendiente de integración; no se inició el lote.")
-            return
         if not access_only and (not selected or (not gpu and not cpu_consent.value)):
             update_stage("Selecciona audios y comprueba el modo de procesamiento.")
             return
@@ -397,8 +397,12 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         settings = {"project": project_input.value.strip() or state["folder"].name,
                     "language": language.value,
                     "folder": folder.value, "diarize": diarize.value,
+                    "backend": "sherpa" if mode.value == "sherpa" else "pyannote",
+                    "speakers": speaker_count.value or None,
                     "force": force.value, "glossary": glossary_input.value.strip()}
-        token = secret() if settings["diarize"] or access_only else None
+        token = secret() if settings["backend"] == "pyannote" and (
+            settings["diarize"] or access_only
+        ) else None
         if access_only:
             speaker_status.value = "Comprobando acceso; la primera descarga puede tardar…"
         state["busy"] = True
@@ -427,11 +431,13 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                 provider = WhisperXProvider(
                     model=model, language=settings["language"], device="cuda" if gpu else "cpu",
                     batch_size=4 if gpu else 1, diarize=settings["diarize"], hf_token=token,
+                    diarization_backend=settings["backend"],
+                    min_speakers=settings["speakers"], max_speakers=settings["speakers"],
                     on_stage=update_stage, allow_diarization_fallback=True,
                 )
                 state["checking_speakers"] = bool(settings["diarize"] or access_only)
                 if settings["diarize"] or access_only:
-                    update_stage("Comprobando y preparando pyannote; primera descarga puede tardar")
+                    update_stage("Preparando separación de voces; primera descarga puede tardar")
                     provider.check_diarization()
                     speaker_status.value = "Acceso comprobado."
                 state["checking_speakers"] = False
@@ -444,7 +450,10 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                 command = ["meika-vox", "--project-id", project_id, "--language",
                            settings["language"], "--model", model]
                 if settings["diarize"]:
-                    command.append("--diarize")
+                    command += ["--diarize", "--diarization-backend", settings["backend"]]
+                    if settings["speakers"]:
+                        command += ["--min-speakers", str(settings["speakers"]),
+                                    "--max-speakers", str(settings["speakers"])]
                 if settings["glossary"]:
                     glossary_path = (root / settings["glossary"]).resolve()
                     if not glossary_path.is_relative_to(root):
@@ -527,8 +536,10 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             except Exception as exc:
                 progress.bar_style = "danger"
                 state["failed"] = selected
-                message = ("No se pudo preparar pyannote. Revisa la clave y las condiciones; "
-                           "o desmarca Distinguir hablantes para continuar."
+                message = (("No se pudo preparar pyannote. Revisa la clave y las condiciones."
+                            if settings["backend"] == "pyannote" else
+                            "No se pudieron preparar las voces sin token. Revisa la conexión "
+                            "y vuelve a intentar; o elige Solo transcribir.")
                            if state.get("checking_speakers")
                            else "No se completó. Revisa carpeta, memoria o conexión "
                            "a Drive y reintenta.")
@@ -588,13 +599,14 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
 
     def change_mode(change):
         selected_mode = change["new"]
-        diarize.value = selected_mode == "pyannote"
-        speaker_setup.layout.display = "" if diarize.value else "none"
-        speaker_help.layout.display = "" if diarize.value else "none"
+        diarize.value = selected_mode != "text"
+        speaker_setup.layout.display = "" if selected_mode == "pyannote" else "none"
+        speaker_options.layout.display = "" if diarize.value else "none"
+        speaker_help.layout.display = "" if selected_mode == "pyannote" else "none"
         mode_help.value = {
             "text": "Texto con marcas de tiempo. No distingue voces y no necesita claves.",
-            "sherpa": "Sherpa-ONNX: previsto para separar voces sin claves. "
-                      "Todavía no está integrado; esta opción no puede comenzar.",
+            "sherpa": "Sherpa-ONNX separa voces sin claves; descarga modelos la primera vez. "
+                      "Experimental: falta validar su calidad en grabaciones reales en español.",
             "pyannote": "Texto con marcas de tiempo y etiquetas Hablante 1, Hablante 2… "
                         "Requiere una clave gratuita (token) de Hugging Face. "
                         "La calidad del texto usa el mismo modelo que Solo transcribir.",
@@ -646,7 +658,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         manual, selection, recordings,
         project_input, motor, cpu_consent,
         w.HTML("<b>¿Cómo quieres transcribir?</b>"), mode, mode_help,
-        speaker_help, speaker_setup, advanced, start_help, start, activity,
+        speaker_help, speaker_setup, speaker_options, advanced, start_help, start, activity,
         w.HTML("Español por defecto. Si Colab se desconecta, abre de nuevo el panel y elige "
                "el mismo proyecto. Los audios ya guardados se conservan."),
     ]))
@@ -663,4 +675,4 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             "recursive": recursive, "details": details, "find": find,
             "found_folders": found_folders, "search_status": search_status,
             "cancel_find": cancel_find, "mode": mode, "mode_help": mode_help,
-            "speaker_setup": speaker_setup}
+            "speaker_setup": speaker_setup, "speaker_count": speaker_count}

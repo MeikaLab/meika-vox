@@ -56,12 +56,19 @@ def write_bundle(bundle: PipelineBundle, output_root: str | Path) -> Path:
             if flag["code"] == "DIARIZATION_FAILED":
                 handle.write(f"OBSERVACIÓN: {flag['message']}\n\n")
         for turn in bundle.turns:
-            start = turn.start_ms / 1000
+            seconds, milliseconds = divmod(turn.start_ms, 1000)
+            hours, seconds = divmod(seconds, 3600)
+            minutes, seconds = divmod(seconds, 60)
+            timestamp = f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
             label = turn.speaker_label or turn.speaker_cluster_id
-            if label == "UNKNOWN":
+            if not label or label == "UNKNOWN":
                 label = "Voz sin identificar"
+            elif not turn.speaker_label and label.startswith("SPEAKER_"):
+                suffix = label.removeprefix("SPEAKER_")
+                if suffix.isdigit():
+                    label = f"Hablante {int(suffix) + 1}"
             text = turn.text_normalized or turn.text_raw
-            handle.write(f"[{start:09.3f}] {label}: {text}\n\n")
+            handle.write(f"[{timestamp}] {label}: {text}\n\n")
 
     changes_path.write_text(
         json.dumps(

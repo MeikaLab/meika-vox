@@ -39,3 +39,11 @@ def test_turn_builder_merges_same_speaker_and_preserves_sources() -> None:
     ]
     assert turns[0].text_normalized == "Hola. Seguimos."
     assert turns[1].speaker_cluster_id == "SPEAKER_01"
+
+
+def test_unknown_speakers_do_not_become_one_long_paragraph():
+    source = [segment(i, i * 30000, (i + 1) * 30000, "UNKNOWN", f"Parte {i}.")
+              for i in range(20)]
+    turns = build_speaker_turns(source)
+    assert len(turns) == 20
+    assert [turn.source_segment_ids for turn in turns] == [[s.segment_id] for s in source]

@@ -33,6 +33,7 @@ class WhisperXProvider:
         batch_size: int = 8,
         diarize: bool = False,
         hf_token: str | None = None,
+        diarization_backend: str = "pyannote",
         min_speakers: int | None = None,
         max_speakers: int | None = None,
         on_stage: Callable[[str], None] | None = None,
@@ -43,8 +44,19 @@ class WhisperXProvider:
         self.device = device
         self.compute_type = compute_type
         self.batch_size = batch_size
+        if diarization_backend not in {"pyannote", "sherpa"}:
+            raise ValueError("Unknown diarization backend")
+        if min_speakers and max_speakers and min_speakers > max_speakers:
+            raise ValueError("min_speakers must not exceed max_speakers")
+        if diarize and diarization_backend == "sherpa" and (
+            min_speakers is not None or max_speakers is not None
+        ) and min_speakers != max_speakers:
+            raise ValueError("Sherpa requires an exact speaker count or automatic detection")
+        self.diarization_backend = diarization_backend
         self.diarize = diarize
-        self.hf_token = hf_token or os.getenv("HF_TOKEN")
+        self.hf_token = (hf_token or os.getenv("HF_TOKEN")) if (
+            diarization_backend == "pyannote"
+        ) else None
         self.min_speakers = min_speakers
         self.max_speakers = max_speakers
         self.on_stage = on_stage or (lambda stage: None)
@@ -69,6 +81,14 @@ class WhisperXProvider:
 
     def check_diarization(self) -> None:
         """Download/load the actual engine before starting the selected recordings."""
+        if self.diarization_backend == "sherpa":
+            from .sherpa_diarization import SherpaDiarizer
+
+            if self._diarizer is None:
+                self._diarizer = SherpaDiarizer(
+                    speakers=self.min_speakers, on_stage=self.on_stage,
+                )
+            return
         if not self.hf_token:
             raise RuntimeError("Configura la clave y acepta las condiciones de pyannote.")
         _, device, _ = self._runtime()
@@ -150,8 +170,14 @@ class WhisperXProvider:
                     diarize_kwargs["max_speakers"] = self.max_speakers
                 diarized = self._diarizer(audio, **diarize_kwargs)
                 result = whisperx.assign_word_speakers(diarized, result)
-                diarization_engine = "pyannote.audio"
-                diarization_model = "speaker-diarization-community-1"
+                if self.diarization_backend == "sherpa":
+                    from .sherpa_diarization import MODEL_ID
+
+                    diarization_engine = "sherpa-onnx"
+                    diarization_model = MODEL_ID
+                else:
+                    diarization_engine = "pyannote.audio"
+                    diarization_model = "speaker-diarization-community-1"
             except Exception:
                 if not self.allow_diarization_fallback:
                     raise

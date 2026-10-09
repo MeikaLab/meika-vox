@@ -77,6 +77,7 @@ def transcribe(
     compute_type: str | None = typer.Option(None, "--compute-type"),
     batch_size: int = typer.Option(8, "--batch-size", min=1),
     diarize: bool = typer.Option(False, "--diarize"),
+    diarization_backend: str = typer.Option("pyannote", "--diarization-backend"),
     min_speakers: int | None = typer.Option(None, "--min-speakers", min=1),
     max_speakers: int | None = typer.Option(None, "--max-speakers", min=1),
     glossary: Path | None = typer.Option(
@@ -95,7 +96,9 @@ def transcribe(
     ),
 ) -> None:
     """Transcribe one file and persist a reproducible run bundle."""
-    require_asr_runtime(diarize=diarize)
+    if diarization_backend not in {"pyannote", "sherpa"}:
+        raise typer.BadParameter("Choose pyannote or sherpa", param_hint="--diarization-backend")
+    require_asr_runtime(diarize=diarize and diarization_backend == "pyannote")
     provider = WhisperXProvider(
         model=model,
         language=language,
@@ -103,6 +106,7 @@ def transcribe(
         compute_type=compute_type,
         batch_size=batch_size,
         diarize=diarize,
+        diarization_backend=diarization_backend,
         min_speakers=min_speakers,
         max_speakers=max_speakers,
     )

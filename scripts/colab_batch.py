@@ -152,7 +152,7 @@ def configuration_key(command: list[str], configuration: str = "") -> str:
     """Execution paths, device, batch size and UI revisions do not invalidate text."""
     options = {}
     relevant = {"--project-id", "--language", "--model", "--compute-type",
-                "--min-speakers", "--max-speakers", "--turn-gap-ms"}
+                "--min-speakers", "--max-speakers", "--turn-gap-ms", "--diarization-backend"}
     for index, item in enumerate(command):
         if item in relevant:
             options[item] = command[index + 1]
@@ -379,7 +379,8 @@ def process_folder(
             # model/language/project without glossary or missing requested diarization.
             if old is None and not force and "--glossary" not in command:
                 desired = {item: command[i + 1] for i, item in enumerate(command[:-1])
-                           if item in {"--project-id", "--model", "--language"}}
+                           if item in {"--project-id", "--model", "--language",
+                                       "--diarization-backend", "--min-speakers", "--max-speakers"}}
                 for legacy_key, legacy_path in state.items():
                     if not legacy_key.endswith(":" + checksum) or not isinstance(legacy_path, str):
                         continue
@@ -395,6 +396,20 @@ def process_folder(
                             and run_info["asr_model"] == desired.get("--model", "small")
                             and run_info["language_requested"] == desired.get("--language", "es")
                             and bool(run_info.get("diarization_engine")) == ("--diarize" in command)
+                            and (
+                                "--diarization-backend" not in desired
+                                or run_info.get("diarization_engine") == {
+                                    "pyannote": "pyannote.audio", "sherpa": "sherpa-onnx",
+                                }.get(desired["--diarization-backend"])
+                            )
+                            and run_info.get("min_speakers") == (
+                                int(desired["--min-speakers"])
+                                if "--min-speakers" in desired else None
+                            )
+                            and run_info.get("max_speakers") == (
+                                int(desired["--max-speakers"])
+                                if "--max-speakers" in desired else None
+                            )
                             and not changes
                         )
                         if same and complete_run(legacy_run):

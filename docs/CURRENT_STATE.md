@@ -29,7 +29,7 @@ Audio
 → WhisperX ASR
 → forced alignment
 → Word[]
-→ optional pyannote diarization
+→ optional pyannote or Sherpa-ONNX diarization
 → TranscriptSegment[]
 → repetition guard
 → glossary normalization
@@ -99,7 +99,7 @@ Examples:
 - FFmpeg acoustic QA;
 - WhisperX provider;
 - word-level alignment;
-- optional pyannote diarization path;
+- optional pyannote or Sherpa-ONNX diarization path;
 - canonical data contracts;
 - repetition guard;
 - project glossary;
@@ -123,7 +123,8 @@ Examples:
 
 - fresh GPU Colab execution of the new user panel with a real recording;
 - shared-drive browsing and arbitrary folder-link resolution;
-- Nemotron/Sherpa-ONNX integration;
+- Nemotron integration;
+- real Spanish-audio validation of the integrated token-free Sherpa path;
 
 - systematic benchmark of real field transcripts against human reference;
 - diarization quality validation on real group sessions;

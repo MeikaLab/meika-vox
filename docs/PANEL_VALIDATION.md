@@ -15,7 +15,7 @@ El cuaderno imprimía el diccionario devuelto por `build_panel`, incluyendo cont
 
 ## Verificaciones
 
-Ruff y 43 tests, en Python 3.11 y 3.12. Los tests ejercitan widgets reales, nombres con espacios finales y Unicode, navegación, búsqueda recursiva y directa, archivos MP4, carpetas vacías, exclusión de grabaciones, consentimiento CPU, guardado, contenido del ZIP, reanudación, fallo, reintento exitoso y activación de la descarga.
+La versión pública anterior pasó Ruff y 43 tests en Python 3.11 y 3.12. Los tests ejercitan widgets reales, nombres con espacios finales y Unicode, navegación, búsqueda recursiva y directa, archivos MP4, carpetas vacías, exclusión de grabaciones, consentimiento CPU, guardado, contenido del ZIP, reanudación, fallo, reintento exitoso y activación de la descarga.
 
 El reconocimiento de esos tests usa un proveedor simulado; no mide precisión de voz. El botón de descarga se verifica con un sustituto de la API de Colab.
 
@@ -29,4 +29,13 @@ La búsqueda global es opcional y se ejecuta en un hilo con avance y cancelació
 
 ## Propuesta de modalidades y manual
 
-Modalidades visibles fuera de opciones avanzadas: texto sin token, Sherpa sin token (pendiente y bloqueado), pyannote con token. Solo pyannote muestra la configuración de claves. El cuaderno de pruebas descarga la rama de propuesta y utiliza MEIKA_Vox_Pruebas para resultados separados. Los tests verifican que elegir Sherpa no pueda iniciar silenciosamente otro modo y que las instrucciones de token se oculten al volver a solo texto. No se repitió la ejecución de reconocimiento bloqueada ni se acredita una prueba en GPU.
+Modalidades visibles fuera de opciones avanzadas: texto sin token, Sherpa sin token (integrado, experimental), pyannote con token. Solo pyannote muestra la configuración de claves. El cuaderno de pruebas descarga la rama de propuesta y utiliza MEIKA_Vox_Pruebas para resultados separados. Los tests verifican selección explícita del motor Sherpa sin token y que las instrucciones de token se oculten al volver a solo texto. No se repitió la ejecución de reconocimiento bloqueada ni se acredita una prueba en GPU.
+
+
+## Revisión final de esta propuesta
+
+Sherpa se integra con modelos de publicaciones públicas, descarga atómica y extracción acotada a modelo/licencia/README. Conserva caché, informa progreso de voces y registra motor/modelos en el manifiesto. No requiere ni lee HF_TOKEN. Número exacto de voces opcional; 0 usa agrupamiento automático. Cambiar de motor o cantidad de voces cambia la identidad de reanudación, y no se adoptan resultados antiguos ambiguos de otro motor.
+
+Los segmentos sin hablante conocido ya no se unen en un párrafo gigante. Las pruebas del adaptador usan dobles de la API, sin cargar bibliotecas nativas, descargar modelos ni medir precisión. Esto verifica contratos y protección de archivos, no compatibilidad de ejecución nativa o exactitud de voces en Colab. La prueba real previamente bloqueada no se repitió por otra vía.
+
+Los TXT nuevos muestran tiempos HH:MM:SS y etiquetas Hablante 1, Hablante 2, conservando IDs técnicos en JSON. Los textos ya guardados no se reprocesan por cambios de presentación.

@@ -75,7 +75,9 @@ def build_speaker_turns(
 
         previous = bucket[-1]
         gap_ms = segment.start_ms - previous.end_ms
-        same_speaker = segment.speaker_cluster_id == previous.speaker_cluster_id
+        # UNKNOWN is not evidence of a common speaker. Keep readable source chunks.
+        known_speaker = segment.speaker_cluster_id not in {None, "UNKNOWN"}
+        same_speaker = known_speaker and segment.speaker_cluster_id == previous.speaker_cluster_id
 
         same_run = segment.transcription_run_id == previous.transcription_run_id
         same_asset = segment.audio_asset_id == previous.audio_asset_id

@@ -26,17 +26,19 @@ El sistema reanuda el lote y omite los archivos ya completados con el mismo audi
 | Modalidad | Clave (token) | Estado |
 |---|---|---|
 | Solo transcribir | No | Implementada: texto y tiempos |
-| Separar hablantes con Sherpa-ONNX | No | Próximamente; aún no ejecutable |
+| Separar hablantes con Sherpa-ONNX | No | Integrada, experimental; calidad real por validar |
 | Separar hablantes con pyannote | Sí, gratuita de Hugging Face | Implementada; requiere autorización del modelo |
 
-Las dos modalidades disponibles usan el mismo modelo de transcripción. No hay una comparación que permita afirmar que un motor de voces es el mejor para tus grabaciones.
+Las tres modalidades usan el mismo modelo de transcripción. No hay una comparación que permita afirmar que un motor de voces es el mejor para tus grabaciones.
 
 [Cuaderno de pruebas del panel](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/feat/user-modes-guide/notebooks/MEIKA_Vox_Colab_Pruebas.ipynb): guarda en `MEIKA_Vox_Pruebas`, separado de los resultados habituales. Su disponibilidad no certifica una prueba real de reconocimiento aprobada.
+
+**Validación:** pruebas automáticas de interfaz, integridad y recuperación aprobadas. La ejecución real del panel en GPU de Colab y la calidad de voces en español siguen pendientes; no se anuncia una validación completa.
 
 ## Características
 
 - Reconocimiento de voz y alineación por palabra con WhisperX.
-- Separación de hablantes opcional con pyannote (requiere token y autorización).
+- Separación de hablantes con Sherpa-ONNX sin token (experimental) o pyannote con token.
 - Panel guiado: carpeta acotada, selección de audios, idioma y proyecto.
 - Progreso por etapas, detención tras el audio actual y reintento de pendientes.
 - Descarga ZIP de textos; resultados verificados y versiones técnicas conservadas.

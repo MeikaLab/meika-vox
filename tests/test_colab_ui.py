@@ -68,10 +68,10 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
     panel["choices"].children[0].value = True
     panel["cpu_consent"].value = True
     assert not panel["start"].disabled
-    # An announced engine must never silently run transcription without voices.
+    # Token-free diarization must be selected explicitly and hide credential setup.
     panel["mode"].value = "sherpa"
-    assert panel["start"].disabled
-    assert "aún no está disponible" in panel["start_help"].value
+    assert not panel["start"].disabled
+    assert "Experimental" in panel["mode_help"].value
     assert panel["speaker_setup"].layout.display == "none"
     panel["mode"].value = "pyannote"
     assert panel["speaker_setup"].layout.display == ""
