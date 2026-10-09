@@ -6,6 +6,7 @@ import json
 import re
 import shutil
 import subprocess
+import zipfile
 from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
@@ -55,15 +56,59 @@ def fingerprint(path: Path) -> str:
 
 
 def complete_run(run: Path) -> bool:
+    """Reject missing, truncated or modified output before resuming."""
     try:
-        manifest = json.loads((run / "manifest.json").read_text())
-        return (
-            manifest["counts"]["segments"] > 0
-            and bool((run / "transcript_normalized.txt").read_text().strip())
-            and all((run / name).is_file() for name in REQUIRED_OUTPUTS)
-        )
+        manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+        if not all((run / name).is_file() for name in REQUIRED_OUTPUTS):
+            return False
+        if not (run / "transcript_normalized.txt").read_text(encoding="utf-8").strip():
+            return False
+        for name in ("qa.json", "audio_qa.json"):
+            json.loads((run / name).read_text(encoding="utf-8"))
+        for name, count_key in (
+            ("transcript_raw.jsonl", "segments"), ("words.jsonl", "words"),
+            ("speaker_turns.jsonl", "speaker_turns"),
+        ):
+            records = [json.loads(line) for line in
+                       (run / name).read_text(encoding="utf-8").splitlines() if line.strip()]
+            if len(records) != manifest["counts"][count_key]:
+                return False
+            if count_key == "segments" and not records:
+                return False
+        for name, checksum in manifest.get("checksums", {}).items():
+            target = run / name
+            if target.parent != run or fingerprint(target) != checksum:
+                return False
+        return True
     except (OSError, ValueError, KeyError, TypeError):
         return False
+
+
+def configuration_key(command: list[str], configuration: str = "") -> str:
+    """Execution paths, device, batch size and UI revisions do not invalidate text."""
+    options = {}
+    relevant = {"--project-id", "--language", "--model", "--compute-type",
+                "--min-speakers", "--max-speakers", "--turn-gap-ms"}
+    for index, item in enumerate(command):
+        if item in relevant:
+            options[item] = command[index + 1]
+        elif item == "--diarize":
+            options[item] = True
+        elif item == "--glossary":
+            options[item] = fingerprint(Path(command[index + 1]))
+    options["pipeline_config"] = configuration
+    return sha256(json.dumps(options, sort_keys=True).encode()).hexdigest()
+
+
+def make_text_archive(output: Path, texts: list[Path]) -> Path:
+    """Package only selected validated texts, never credentials or source recordings."""
+    target = output / "Transcripciones.zip"
+    temporary = target.with_suffix(".zip.tmp")
+    with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as archive:
+        for text in sorted(set(texts)):
+            archive.write(text, arcname=text.name)
+    temporary.replace(target)
+    return target
 
 
 def _clean_label(value: str) -> str:
@@ -179,11 +224,7 @@ def _activity_label(audio: Path) -> str:
         components.append(f"Taller_{int(taller_number):02d}")
 
     if not components:
-        parent = next(
-            (name for name in ancestors if name.lower() not in {"audio", "audios"}),
-            audio.parent.name,
-        )
-        components.append(_clean_label(parent))
+        components.append(_clean_label(audio.stem))
 
     siblings = sorted(discover_audio(audio.parent), key=_audio_part_key)
     if len(siblings) > 1:
@@ -197,14 +238,15 @@ def _activity_label(audio: Path) -> str:
 
 def readable_copy(audio: Path, run: Path, output: Path, checksum: str) -> Path:
     """Write a human-readable transcript named from activity context."""
-    del checksum  # Source identity remains in the technical manifest.
     label = _activity_label(audio)
     destination = output / "Lectura"
     destination.mkdir(parents=True, exist_ok=True)
     # Include a short source checksum so two recordings with identical activity
     # labels cannot silently overwrite each other's readable transcript.
-    target = destination / f"{label}__{fingerprint(audio)[:12]}__Transcripcion.txt"
-    shutil.copyfile(run / "transcript_normalized.txt", target)
+    target = destination / f"{label}__{checksum[:12]}__Transcripcion.txt"
+    temporary = target.with_suffix(".txt.tmp")
+    shutil.copyfile(run / "transcript_normalized.txt", temporary)
+    temporary.replace(target)
     return target
 
 
@@ -217,9 +259,16 @@ def process_folder(
     configuration: str = "",
     emit: Callable[[str], None] = print,
     execute: Callable = subprocess.run,
+    on_progress: Callable[[dict], None] | None = None,
+    selected: list[Path] | None = None,
+    runner: Callable[[Path, Path], Path] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> dict:
     """Persist successful results after each file; retry failures on the next invocation."""
-    audios = discover_audio(folder, exclude=output)
+    available = discover_audio(folder, exclude=output)
+    audios = available if selected is None else sorted(set(selected))
+    if not set(audios).issubset(set(available)):
+        raise ValueError("Hay archivos seleccionados fuera de la carpeta de audios.")
     if not audios:
         raise ValueError("La carpeta elegida no contiene audios compatibles.")
     output.mkdir(parents=True, exist_ok=True)
@@ -230,48 +279,140 @@ def process_folder(
             state = {}
     except (OSError, ValueError):
         state = {}
-    settings = sha256(json.dumps([command, configuration]).encode()).hexdigest()
+    settings = configuration_key(command, configuration)
     report = {"completed": [], "skipped": [], "failed": []}
+
+    def notify(event: str, index: int, audio: Path | None = None) -> None:
+        if on_progress is not None:
+            on_progress({
+                "event": event,
+                "index": index,
+                "total": len(audios),
+                "audio": audio.name if audio is not None else None,
+                "completed": len(report["completed"]),
+                "skipped": len(report["skipped"]),
+                "failed": len(report["failed"]),
+            })
+
+    notify("ready", 0)
     for index, audio in enumerate(audios, 1):
+        if should_stop and should_stop():
+            notify("stopped", index, audio)
+            break
+        notify("started", index, audio)
         emit(f"[{index}/{len(audios)}] {audio.name}")
         try:
             checksum = fingerprint(audio)
             key = f"{settings}:{checksum}"
             old = state.get(key)
-            if not force and isinstance(old, str) and complete_run(Path(old)):
+            # Legacy indexes used a commit hash. Adopt only a verifiable identical
+            # model/language/project without glossary or missing requested diarization.
+            if old is None and not force and "--glossary" not in command:
+                desired = {item: command[i + 1] for i, item in enumerate(command[:-1])
+                           if item in {"--project-id", "--model", "--language"}}
+                for legacy_key, legacy_path in state.items():
+                    if not legacy_key.endswith(":" + checksum) or not isinstance(legacy_path, str):
+                        continue
+                    try:
+                        legacy_run = Path(legacy_path)
+                        info = json.loads((legacy_run / "manifest.json").read_text())
+                        run_info = info["run"]
+                        changes = json.loads(
+                            (legacy_run / "normalization_changes.json").read_text()
+                        )
+                        same = (
+                            info["asset"]["project_id"] == desired.get("--project-id")
+                            and run_info["asr_model"] == desired.get("--model", "small")
+                            and run_info["language_requested"] == desired.get("--language", "es")
+                            and bool(run_info.get("diarization_engine")) == ("--diarize" in command)
+                            and not changes
+                        )
+                        if same and complete_run(legacy_run):
+                            old = legacy_path
+                            break
+                    except (OSError, ValueError, KeyError, TypeError):
+                        continue
+            old_valid = not force and isinstance(old, str) and complete_run(Path(old))
+            if old_valid:
+                identity = json.loads((Path(old) / "manifest.json").read_text(encoding="utf-8"))
+                if identity["asset"]["checksum_sha256"] != checksum:
+                    old_valid = False
+            if old_valid:
                 text = readable_copy(audio, Path(old), output, checksum)
-                report["skipped"].append({"audio": str(audio), "text": str(text)})
+                cached = json.loads((Path(old) / "manifest.json").read_text(encoding="utf-8"))
+                report["skipped"].append({"audio": str(audio), "text": str(text),
+                                         "warnings": cached["run"].get("status")
+                                         == "COMPLETED_WITH_WARNINGS"})
                 emit("Ya terminado: se omite.")
+                notify("skipped", index, audio)
                 continue
-            before = set(output.rglob("manifest.json"))
-            result = execute(
-                [command[0], "transcribe", str(audio), *command[1:], "--output", str(output)],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode:
-                raise RuntimeError((result.stderr or result.stdout or "Falló el motor")[-1800:])
-            created = set(output.rglob("manifest.json")) - before
-            if len(created) != 1:
-                raise RuntimeError("El motor no produjo un único resultado nuevo.")
-            run = created.pop().parent
+            # Recover a validated result whose cache update was interrupted.
+            recovered = None
+            if not force:
+                for path in output.rglob("manifest.json"):
+                    try:
+                        info = json.loads(path.read_text(encoding="utf-8"))
+                        if (info.get("batch_settings") == settings
+                                and info["asset"]["checksum_sha256"] == checksum
+                                and complete_run(path.parent)):
+                            recovered = path.parent
+                            break
+                    except (OSError, ValueError, KeyError, TypeError):
+                        continue
+            if recovered is not None:
+                run = recovered
+            elif runner is not None:
+                run = runner(audio, output)
+            else:
+                before = set(output.rglob("manifest.json"))
+                result = execute(
+                    [command[0], "transcribe", str(audio), *command[1:], "--output", str(output)],
+                    capture_output=True, text=True,
+                )
+                if result.returncode:
+                    raise RuntimeError(
+                        "Falló el motor. Comprueba memoria, audio y acceso al modelo."
+                    )
+                created = set(output.rglob("manifest.json")) - before
+                if len(created) != 1:
+                    raise RuntimeError("El motor no produjo un único resultado nuevo.")
+                run = created.pop().parent
             if not complete_run(run):
                 raise RuntimeError("Resultado incompleto o sin texto: no se marca como terminado.")
             # Ensure a source changed during processing is not incorrectly cached.
             manifest = json.loads((run / "manifest.json").read_text())
             if manifest["asset"]["checksum_sha256"] != checksum:
                 raise RuntimeError("El audio cambió durante el proceso; vuelve a ejecutar.")
+            manifest["batch_settings"] = settings
+            manifest_path = run / "manifest.json"
+            manifest_tmp = manifest_path.with_suffix(".tmp")
+            manifest_tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=2),
+                                    encoding="utf-8")
+            manifest_tmp.replace(manifest_path)
             state[key] = str(run.resolve())
             temporary = state_path.with_suffix(".tmp")
             temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2))
             temporary.replace(state_path)
             text = readable_copy(audio, run, output, checksum)
-            report["completed"].append({"audio": str(audio), "run": str(run), "text": str(text)})
+            item = {"audio": str(audio), "run": str(run), "text": str(text),
+                    "warnings": manifest["run"].get("status") == "COMPLETED_WITH_WARNINGS"}
+            report["completed"].append(item)
             emit(f"Texto guardado: {text}")
+            notify("completed", index, audio)
         except Exception as exc:
             report["failed"].append({"audio": str(audio), "error": str(exc)})
             emit(f"PENDIENTE: {exc}")
-    (output / "batch_last_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
+            notify("failed", index, audio)
+    report["pending"] = len(audios) - sum(len(report[k]) for k in
+                                          ("completed", "skipped", "failed"))
+    report_path = output / "batch_last_report.json"
+    report_tmp = report_path.with_suffix(".tmp")
+    report_tmp.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    report_tmp.replace(report_path)
+    texts = [Path(item["text"]) for key in ("completed", "skipped") for item in report[key]]
+    if texts:
+        make_text_archive(output, texts)
+    notify("finished", len(audios))
     emit(
         f"Terminados: {len(report['completed'])} · ya listos: {len(report['skipped'])}"
         f" · pendientes: {len(report['failed'])}"

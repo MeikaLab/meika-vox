@@ -1,6 +1,6 @@
 # MEIKA Vox — Current State
 
-_As-built snapshot: 2026-10-07_
+_As-built snapshot: 2026-10-09 · version 0.2.0_
 
 This document is the source of truth for visual representations of the current product.
 
@@ -10,23 +10,13 @@ MEIKA Vox is a **traceable audio-to-structured-transcript pipeline** for qualita
 
 ## User-facing operational flow
 
-```text
-Researcher
-  ↓
-Google Drive project folders
-  ↓
-MEIKA Vox Colab notebook
-  ├── choose folder
-  ├── optional speaker separation
-  └── transcribe batch
-  ↓
-MEIKA_Vox/Transcripciones
-  ├── Lectura/
-  │     └── activity-labelled .txt
-  └── technical run bundles
-```
+The public Colab notebook prepares the runtime, connects the user's Drive and opens
+an ipywidgets panel. The panel browses a specific folder inside My Drive, selects
+recordings and language, optionally prepares speaker separation, transcribes the
+selection and offers a text ZIP plus a Drive search link.
 
-The Colab notebook is the current operational interface.
+Outputs live under `MEIKA_Vox/Proyectos/<project>/Transcripciones`: `Lectura/`
+contains the latest readable texts; asset/run directories preserve technical versions.
 
 ## Technical flow
 
@@ -76,13 +66,13 @@ Audio
 
 ### Human-readable
 
-`Lectura/<Lugar>__<Taller_o_Mesa>__[Parte]__Transcripcion.txt`
+`Lectura/<Lugar_o_archivo>__[Taller_o_Mesa]__[Parte]__<checksum_corto>__Transcripcion.txt`
 
 Examples:
 
-- `Valle_Verde__Taller_1__Parte_1__Transcripcion.txt`
-- `Valle_Verde__Taller_1__Parte_2__Transcripcion.txt`
-- `Escuela_Los_Alerces__Mesa_1__Transcripcion.txt`
+- Contextual sector/place/table names remain supported.
+- Generic recordings retain their filename with a short checksum to avoid collisions.
+- `Transcripciones.zip` contains validated texts for the last batch that saved or resumed text.
 
 ### Technical
 
@@ -118,9 +108,20 @@ Examples:
 - recursive Colab folder discovery;
 - resumable batch state;
 - human-readable activity-based filenames;
-- CI and synthetic tests.
+- CI and synthetic tests;
+- guided folder browsing and multi-file selection without scanning all Drive;
+- explicit CPU/small consent instead of silent model changes;
+- stage activity, elapsed time, stop-after-current and retry-pending controls;
+- cached models within a batch and temporary local audio processing;
+- integrity checksums, lost-index recovery and conservative legacy cache migration;
+- run-scoped segment, word and turn identifiers;
+- optional diarization fallback preserving text with a visible QA warning.
 
 ### Still pending / not proven complete
+
+- fresh GPU Colab execution of the new user panel with a real recording;
+- shared-drive browsing and arbitrary folder-link resolution;
+- Nemotron/Sherpa-ONNX integration;
 
 - systematic benchmark of real field transcripts against human reference;
 - diarization quality validation on real group sessions;

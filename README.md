@@ -2,6 +2,8 @@
 
 **Transcribe carpetas completas de audio desde tu Google Drive usando Google Colab y WhisperX.**
 
+> La interfaz renovada está en revisión en la [PR #4](https://github.com/MeikaLab/meika-vox/pull/4). [Probar la versión 0.2.0 en Colab](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/feat/colab-simple-user-mode-20261009/notebooks/MEIKA_Vox_Colab_Pruebas.ipynb). El enlace de main conserva la versión anterior hasta aprobar la publicación.
+
 [![Abrir en Google Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/main/notebooks/MEIKA_Vox_Colab.ipynb)
 
 Código abierto para procesar entrevistas, reuniones, talleres y grupos focales por lotes. Se ejecuta desde **tu propia cuenta de Google Colab** y guarda transcripciones preliminares y respaldos técnicos en **tu propio Google Drive**. No necesitas instalar Python ni tener cuenta de GitHub.
@@ -10,18 +12,23 @@ Código abierto para procesar entrevistas, reuniones, talleres y grupos focales 
 
 1. Abre el botón **Abrir en Google Colab** y entra con tu cuenta Google.
 2. En **Entorno de ejecución → Cambiar tipo de entorno de ejecución**, elige GPU si está disponible.
-3. Pulsa **Ejecutar todas** y autoriza tu Google Drive.
-4. Escribe el nombre del proyecto, elige idioma y la carpeta de audios.
-5. Pulsa **Transcribir carpeta**. Los audios y subcarpetas se procesan en lote.
-6. Revisa los TXT y paquetes técnicos en `Mi unidad/MEIKA_Vox/Proyectos/<nombre_proyecto>/Transcripciones`.
+3. Pulsa ▶ en **Preparar y abrir MEIKA Vox** y autoriza tu Drive. El panel aparece arriba, en esa misma celda.
+4. En el panel elige una carpeta específica de Mi unidad y pulsa **Buscar audios aquí**.
+5. Confirma proyecto, idioma y audios. Pulsa **Transcribir seleccionados**.
+6. Descarga el ZIP de textos o revisa `Mi unidad/MEIKA_Vox/Proyectos/<nombre_proyecto>/Transcripciones/Lectura`.
 
-El sistema reanuda el lote y omite los archivos ya completados con el mismo audio y configuración. Usa WhisperX **large-v3** con GPU disponible y **small** en CPU si no hay acelerador. Los tiempos y la disponibilidad de GPU de Colab son variables.
+[Guía breve: voces, progreso, recuperación y límites](docs/COLAB_USUARIOS.md).
+
+El sistema reanuda el lote y omite los archivos ya completados con el mismo audio y configuración. Usa WhisperX **large-v3** con GPU disponible y **small** en CPU solamente cuando el usuario acepta expresamente ese modo. Los tiempos y la disponibilidad de GPU de Colab son variables.
 
 ## Características
 
 - Reconocimiento de voz y alineación por palabra con WhisperX.
 - Separación de hablantes opcional con pyannote (requiere token y autorización).
-- Selección de proyecto, idioma y carpeta de Drive.
+- Panel guiado: carpeta acotada, selección de audios, idioma y proyecto.
+- Progreso por etapas, detención tras el audio actual y reintento de pendientes.
+- Descarga ZIP de textos; resultados verificados y versiones técnicas conservadas.
+- Modelos reutilizados dentro del lote y liberados al terminar.
 - Glosario opcional en JSON aportado por cada usuario (no se aplica uno automáticamente).
 - Trazabilidad: SHA-256, metadatos ffprobe, texto original, normalización conservadora, timestamps y QA.
 - Resultados TXT y archivos JSON/JSONL; reporte del lote y reanudación de procesos interrumpidos.

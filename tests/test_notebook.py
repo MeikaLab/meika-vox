@@ -14,7 +14,9 @@ def test_all_colab_code_cells_compile() -> None:
 
 def test_public_notebook_is_generic() -> None:
     content = NOTEBOOK.read_text(encoding="utf-8")
-    assert "project_input" in content
-    assert "glossary_input" in content
-    assert "batch.process_folder" in content
+    assert "ui.build_panel" in content
+    panel = (NOTEBOOK.parents[1] / "scripts/colab_ui.py").read_text(encoding="utf-8")
+    assert "project_input" in panel
+    assert "glossary_input" in panel
+    assert "batch.process_folder" in panel
     assert "SM26" not in content
