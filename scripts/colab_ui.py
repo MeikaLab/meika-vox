@@ -6,6 +6,8 @@ import importlib.util
 import json
 import re
 import shutil
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -439,6 +441,32 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             provider = None
             try:
                 project_id = project_slug(settings["project"])
+                # Instalar voces sin token solo cuando se seleccionan; nunca exigirlas
+                # al usuario que quiere únicamente transcripción.
+                if (
+                    settings["diarize"]
+                    and settings["backend"] == "sherpa"
+                    and not test_mode
+                    and importlib.util.find_spec("sherpa_onnx") is None
+                ):
+                    update_stage("Instalando módulo opcional de hablantes sin token…")
+                    try:
+                        installed = subprocess.run(
+                            [sys.executable, "-m", "pip", "install", "sherpa-onnx>=1.10.28,<2"],
+                            capture_output=True,
+                            text=True,
+                            timeout=600,
+                            check=False,
+                        )
+                        if installed.returncode:
+                            update_stage(
+                                "No se pudo instalar Sherpa. Se intentará conservar el texto "
+                                "con una advertencia de voces."
+                            )
+                    except (OSError, subprocess.TimeoutExpired):
+                        update_stage(
+                            "La instalación de Sherpa falló. El texto igualmente se conservará."
+                        )
                 model = "large-v3" if gpu else "small"
                 provider = WhisperXProvider(
                     model=model, language=settings["language"], device="cuda" if gpu else "cpu",
