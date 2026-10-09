@@ -101,3 +101,44 @@ def test_readable_copy_never_overwrites_same_activity_label(tmp_path: Path) -> N
     assert text_a != text_b
     assert text_a.read_text(encoding="utf-8") == "Texto A"
     assert text_b.read_text(encoding="utf-8") == "Texto B"
+
+
+def test_find_audio_folders_counts_exact_paths_and_excludes_results(tmp_path):
+    audio = tmp_path / "Audios " / "Reunión"
+    audio.mkdir(parents=True)
+    (audio / "grabacion.MP4").write_bytes(b"audio")
+    (audio / "minuta.pdf").write_bytes(b"document")
+    output = tmp_path / "MEIKA_Vox"
+    output.mkdir()
+    (output / "backup.wav").write_bytes(b"skip")
+    progress = []
+    report = batch.find_audio_folders(tmp_path, exclude=output, on_progress=progress.append)
+    assert report["folders"] == {str(audio): 1}
+    assert not report["limited"] and not report["cancelled"]
+    assert report["visited"] == 3
+    assert progress[-1]["found"] == 1
+
+
+def test_find_audio_folders_reports_cancelled_and_limited_search(tmp_path):
+    (tmp_path / "A").mkdir()
+    (tmp_path / "B").mkdir()
+    limited = batch.find_audio_folders(tmp_path, max_directories=1)
+    assert limited["limited"] and limited["visited"] == 1
+    cancelled = batch.find_audio_folders(tmp_path, should_stop=lambda: True)
+    assert cancelled["cancelled"] and cancelled["visited"] == 0
+    expired = batch.find_audio_folders(tmp_path, time_budget=0)
+    assert expired["limited"]
+
+
+def test_find_audio_folders_does_not_follow_external_or_cyclic_paths(tmp_path):
+    root = tmp_path / "Drive"
+    root.mkdir()
+    outside = tmp_path / "External"
+    outside.mkdir()
+    (outside / "secret.wav").write_bytes(b"outside")
+    (root / "external").symlink_to(outside, target_is_directory=True)
+    (root / "cycle").symlink_to(root, target_is_directory=True)
+    report = batch.find_audio_folders(root)
+    assert report["folders"] == {}
+    assert report["visited"] == 1
+    assert not report["limited"]

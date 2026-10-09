@@ -6,7 +6,9 @@ import json
 import re
 import shutil
 import subprocess
+import time
 import zipfile
+from collections import deque
 from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
@@ -51,6 +53,62 @@ def discover_audio(
         and p.resolve().is_relative_to(root)
         and not (excluded and p.resolve().is_relative_to(excluded))
     )
+
+
+def find_audio_folders(
+    root: Path, *, exclude: Path | None = None,
+    on_progress: Callable[[dict], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    max_directories: int = 3000, time_budget: float = 60,
+) -> dict:
+    """List folders containing media, with explicit partial/cancelled search status.
+
+    Counts are direct files in each folder, not aggregated descendant counts.
+    No audio content is read or copied by this search.
+    """
+    root = root.resolve()
+    excluded = exclude.resolve() if exclude else None
+    pending = deque([root])
+    seen = set()
+    report = {"folders": {}, "visited": 0, "unreadable": 0,
+              "cancelled": False, "limited": False}
+    since = time.monotonic()
+    while pending:
+        if should_stop and should_stop():
+            report["cancelled"] = True
+            break
+        if report["visited"] >= max_directories or time.monotonic() - since >= time_budget:
+            report["limited"] = True
+            break
+        directory = pending.popleft()
+        resolved = directory.resolve()
+        if (resolved in seen or not resolved.is_relative_to(root)
+                or (excluded and resolved.is_relative_to(excluded))):
+            continue
+        seen.add(resolved)
+        count = 0
+        children = []
+        try:
+            for entry in directory.iterdir():
+                target = entry.resolve()
+                if (not target.is_relative_to(root)
+                        or (excluded and target.is_relative_to(excluded))):
+                    continue
+                if entry.is_dir():
+                    children.append(entry)
+                elif entry.is_file() and entry.suffix.lower() in AUDIO_EXTENSIONS:
+                    count += 1
+        except OSError:
+            report["unreadable"] += 1
+        report["visited"] += 1
+        if count:
+            report["folders"][str(directory)] = count
+        pending.extend(sorted(children, key=lambda p: p.name.casefold()))
+        if on_progress:
+            on_progress({"visited": report["visited"], "found": len(report["folders"]),
+                         "current": str(directory.relative_to(root)),
+                         "elapsed": round(time.monotonic() - since)})
+    return report
 
 
 def fingerprint(path: Path) -> str:
@@ -271,10 +329,16 @@ def process_folder(
     should_stop: Callable[[], bool] | None = None,
 ) -> dict:
     """Persist successful results after each file; retry failures on the next invocation."""
-    available = discover_audio(folder, exclude=output)
-    audios = available if selected is None else sorted(set(selected))
-    if not set(audios).issubset(set(available)):
-        raise ValueError("Hay archivos seleccionados fuera de la carpeta de audios.")
+    if selected is None:
+        audios = discover_audio(folder, exclude=output)
+    else:
+        audios = sorted(set(selected))
+        root = folder.resolve()
+        excluded = output.resolve()
+        if any(not p.is_file() or p.suffix.lower() not in AUDIO_EXTENSIONS
+               or not p.resolve().is_relative_to(root)
+               or p.resolve().is_relative_to(excluded) for p in audios):
+            raise ValueError("Hay archivos seleccionados fuera de la carpeta de audios.")
     if not audios:
         raise ValueError("La carpeta elegida no contiene audios compatibles.")
     output.mkdir(parents=True, exist_ok=True)

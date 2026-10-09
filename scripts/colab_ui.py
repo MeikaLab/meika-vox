@@ -62,6 +62,13 @@ def build_panel(repo: Path, root: Path) -> dict:
     up = w.Button(description="Volver a la carpeta anterior")
     enter = w.Button(description="Entrar")
     scan = w.Button(description="Actualizar audios", button_style="info")
+    find = w.Button(description="Encontrar carpetas con audios", button_style="info")
+    cancel_find = w.Button(description="Detener búsqueda")
+    cancel_find.layout.display = "none"
+    found_folders = w.Dropdown(description="Con audios:", options=[("Elige un resultado…", "")])
+    found_folders.layout.display = "none"
+    search_status = w.HTML()
+    search_stop = threading.Event()
     recursive = w.Checkbox(value=True, description="Incluir subcarpetas")
     recordings = w.SelectMultiple(options=[], description="Audios:", rows=7)
     choices = w.VBox()
@@ -120,12 +127,12 @@ def build_panel(repo: Path, root: Path) -> dict:
     logs = w.Accordion(children=[details])
     logs.set_title(0, "Detalles técnicos")
     logs.selected_index = None
-    state = {"busy": False, "folder": root, "selected_folder": None, "failed": [],
+    state = {"busy": False, "finding": False, "folder": root, "selected_folder": None, "failed": [],
              "archive": None, "stage": "Esperando", "since": 0.0}
     stop_event = threading.Event()
     done_event = threading.Event()
     controls = [project_input, language, folder, folders, up, enter, scan, recursive,
-                recordings, cpu_consent, diarize, check, glossary_input, force]
+                recordings, cpu_consent, diarize, check, glossary_input, force, find, found_folders]
 
     def note(message):
         details.append_stdout(re.sub(r"hf_[A-Za-z0-9]+", "[clave oculta]", str(message)) + "\n")
@@ -158,14 +165,16 @@ def build_panel(repo: Path, root: Path) -> dict:
 
         elif not gpu and not cpu_consent.value:
             reason = "Activa una GPU o marca Continuar sin GPU para comenzar."
-        start.disabled = state["busy"] or bool(reason)
+        start.disabled = state["busy"] or state["finding"] or bool(reason)
         start_help.value = escape(reason)
         selected_count = len(recordings.value)
         start.description = (f"Transcribir {selected_count} audios"
                              if selected_count else "Transcribir")
         selection_help.value = ""
         selection.layout.display = "" if recordings.options else "none"
-        if state["busy"]:
+        if state["finding"]:
+            start_help.value = "Buscando carpetas; puedes detener la búsqueda."
+        elif state["busy"]:
             start_help.value = "Procesando; cada audio terminado se guarda en Drive."
 
     def choose(_):
@@ -182,18 +191,20 @@ def build_panel(repo: Path, root: Path) -> dict:
         choices.children = tuple(boxes)
 
     def discover(_=None):
-        if state["busy"]:
+        if state["busy"] or state["finding"]:
             return
         clear_selection()
         try:
             path = safe_folder(folder.value)
-            if path == root:
-                count.value = "Elige una carpeta en la lista. No se busca en toda Mi unidad."
+            if path == root and not state.get("root_direct"):
+                count.value = ("Elige una carpeta o pulsa Encontrar carpetas con audios "
+                               "para buscar en Mi unidad.")
                 ready()
                 return
             count.value = "Buscando audios en esta carpeta…"
             scan.disabled = True
-            found = batch.discover_audio(path, exclude=output_root, recursive=recursive.value)
+            found = batch.discover_audio(path, exclude=output_root,
+                                         recursive=recursive.value and path != root)
             recordings.options = [(str(p.relative_to(path)), str(p)) for p in found]
             recordings.value = tuple(str(p) for p in found)
             state["selected_folder"] = path
@@ -211,7 +222,8 @@ def build_panel(repo: Path, root: Path) -> dict:
                 if samples:
                     count.value += f"<br>Archivos que sí veo: {escape(samples)}."
                 else:
-                    count.value += "<br>No hay archivos directamente en esta carpeta."
+                    count.value += ("<br>Colab no ve archivos directamente en esta carpeta. "
+                                    "Comprueba la cuenta de Drive si esperabas encontrarlos.")
                 count.value += "<br>Formatos: MP3, M4A, WAV, MP4, WEBM, OGG, OPUS y otros."
         except (OSError, ValueError) as exc:
             clear_selection()
@@ -220,7 +232,8 @@ def build_panel(repo: Path, root: Path) -> dict:
             scan.disabled = False
             ready()
 
-    def browse(path):
+    def browse(path, allow_root=False):
+        state["root_direct"] = path == root and allow_root
         state["navigating"] = True
         try:
             state["folder"] = path
@@ -235,7 +248,7 @@ def build_panel(repo: Path, root: Path) -> dict:
             location.value = f"<b>Carpeta elegida:</b> Mi unidad / {escape(folder.value)}"
             up.disabled = path == root
             if not project_input.value.strip() or project_input.value == state.get("auto_project"):
-                automatic = path.name if path != root else ""
+                automatic = path.name if path != root else "Audios de Mi unidad"
                 project_input.value = automatic
                 state["auto_project"] = automatic
         finally:
@@ -269,6 +282,78 @@ def build_panel(repo: Path, root: Path) -> dict:
             count.value = "Pulsa Abrir ruta para comprobar la carpeta escrita."
             ready()
 
+    def search_folders(_):
+        if state["busy"] or state["finding"]:
+            return
+        state["finding"] = True
+        search_stop.clear()
+        found_folders.options = [("Elige un resultado…", "")]
+        found_folders.layout.display = "none"
+        for control in controls:
+            control.disabled = True
+        retry.disabled = download.disabled = True
+        cancel_find.disabled = False
+        cancel_find.layout.display = ""
+        search_status.value = "Buscando en Mi unidad… Puede tardar si tienes muchas carpetas."
+        ready()
+
+        def progress(info):
+            search_status.value = (f"Buscando… {info['visited']} carpetas revisadas · "
+                                   f"{info['found']} con audios · {info['elapsed']} s<br>"
+                                   f"Revisando: {escape(info['current'] or 'Mi unidad')}")
+
+        def work():
+            try:
+                report = batch.find_audio_folders(
+                    root, exclude=output_root, on_progress=progress,
+                    should_stop=search_stop.is_set,
+                )
+                options = []
+                for path, total in sorted(report["folders"].items()):
+                    relative = str(Path(path).relative_to(root))
+                    options.append((f"{relative if relative != '.' else 'Mi unidad'} · "
+                                    f"{total} audios", path))
+                found_folders.options = [("Elige un resultado…", ""), *options]
+                found_folders.layout.display = "" if options else "none"
+                partial = report["cancelled"] or report["limited"] or report["unreadable"]
+                status = "Búsqueda parcial" if partial else "Búsqueda finalizada"
+                search_status.value = (f"<b>{status}:</b> {len(options)} carpetas con audios · "
+                                       f"{report['visited']} carpetas revisadas.")
+                if report["limited"]:
+                    search_status.value += " Se alcanzó el límite de tiempo o carpetas."
+                if report["unreadable"]:
+                    search_status.value += f" {report['unreadable']} carpetas no se pudieron leer."
+                if options:
+                    search_status.value += " Elige una en Con audios."
+                elif not partial:
+                    search_status.value += (" Colab no encontró archivos compatibles en Mi unidad. "
+                                            "Comprueba que conectaste la cuenta correcta y que "
+                                            "los audios están accesibles en esa unidad.")
+                else:
+                    search_status.value += " No se revisó toda Mi unidad; puedes buscar otra vez."
+            except Exception:
+                search_status.value = ("No se pudo completar la búsqueda. "
+                                       "Comprueba Drive y reintenta.")
+            finally:
+                state["finding"] = False
+                for control in controls:
+                    control.disabled = False
+                cancel_find.layout.display = "none"
+                up.disabled = state["folder"] == root
+                folders.disabled = len(folders.options) <= 1
+                retry.disabled = not state["failed"]
+                download.disabled = state["archive"] is None
+                ready()
+
+        threading.Thread(target=work, name="MEIKA_Vox_search", daemon=True).start()
+
+    def use_found_folder(change):
+        if state["finding"] or not change["new"]:
+            return
+        path = safe_folder(change["new"])
+        # Root hits contain direct audio; never recursively scan all Drive on selection.
+        browse(path, allow_root=path == root)
+
     def secret():
         try:
             from google.colab import userdata
@@ -288,7 +373,7 @@ def build_panel(repo: Path, root: Path) -> dict:
         stage.value = escape(message)
 
     def launch(selected, access_only=False):
-        if state["busy"]:
+        if state["busy"] or state["finding"]:
             return
         if not access_only and (not selected or (not gpu and not cpu_consent.value)):
             update_stage("Selecciona audios y comprueba el modo de procesamiento.")
@@ -495,6 +580,9 @@ def build_panel(repo: Path, root: Path) -> dict:
 
     diarize.observe(lambda change: setattr(speaker_setup.layout, "display",
                                           "" if change["new"] else "none"), names="value")
+    find.on_click(search_folders)
+    cancel_find.on_click(lambda _: search_stop.set())
+    found_folders.observe(use_found_folder, names="value")
     up.on_click(navigate)
     folders.observe(open_folder, names="value")
     enter.description = "Abrir ruta"
@@ -519,10 +607,10 @@ def build_panel(repo: Path, root: Path) -> dict:
     activity = w.VBox([progress, current_audio, stage, summary, stop, results,
                        download, retry, preview, logs])
     activity.layout.display = "none"
-    for button in (scan, start, stop, download, retry, check, up):
+    for button in (scan, start, stop, download, retry, check, up, find, cancel_find):
         button.layout.width = "auto"
         button.layout.min_width = "180px"
-    folders.layout.width = "95%"
+    folders.layout.width = found_folders.layout.width = "95%"
     folders.style.description_width = "initial"
     project_input.placeholder = "Se usa el nombre de la carpeta si lo dejas vacío"
     for item in (scan, stop, download, retry, selection):
@@ -531,7 +619,8 @@ def build_panel(repo: Path, root: Path) -> dict:
     display(w.VBox([
         w.HTML("<div style='background:#f1f7f6;padding:16px;border-radius:10px;color:#1a4146'>"
                "<h2>MEIKA Vox</h2>Elige tus audios, transcribe y descarga los textos.</div>"),
-        location, folders, up, count, scan, manual, selection, recordings,
+        location, folders, up, count, scan, find, cancel_find, search_status, found_folders,
+        manual, selection, recordings,
         project_input, motor, cpu_consent, advanced, start_help, start, activity,
         w.HTML("Español por defecto. Si Colab se desconecta, abre de nuevo el panel y elige "
                "el mismo proyecto. Los audios ya guardados se conservan."),
@@ -546,4 +635,6 @@ def build_panel(repo: Path, root: Path) -> dict:
             "done": done_event, "choices": choices, "activity": activity, "up": up,
             "open_path": enter, "count": count, "location": location, "preview": preview,
             "start_help": start_help, "download": download,
-            "recursive": recursive, "details": details}
+            "recursive": recursive, "details": details, "find": find,
+            "found_folders": found_folders, "search_status": search_status,
+            "cancel_find": cancel_find}

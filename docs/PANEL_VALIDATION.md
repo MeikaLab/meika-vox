@@ -15,10 +15,14 @@ El cuaderno imprimía el diccionario devuelto por `build_panel`, incluyendo cont
 
 ## Verificaciones
 
-Ruff y 39 tests, en Python 3.11 y 3.12. Los tests ejercitan widgets reales, nombres con espacios finales y Unicode, navegación, búsqueda recursiva y directa, archivos MP4, carpetas vacías, exclusión de grabaciones, consentimiento CPU, guardado, contenido del ZIP, reanudación, fallo, reintento exitoso y activación de la descarga.
+Ruff y 43 tests, en Python 3.11 y 3.12. Los tests ejercitan widgets reales, nombres con espacios finales y Unicode, navegación, búsqueda recursiva y directa, archivos MP4, carpetas vacías, exclusión de grabaciones, consentimiento CPU, guardado, contenido del ZIP, reanudación, fallo, reintento exitoso y activación de la descarga.
 
 El reconocimiento de esos tests usa un proveedor simulado; no mide precisión de voz. El botón de descarga se verifica con un sustituto de la API de Colab.
 
 Se instaló WhisperX 3.8.6 en un entorno CPU aislado y se preparó un audio sintético en español para una prueba real. La revisión automática bloqueó la continuación por una solicitud saliente a telemetría de Microsoft cuyo contenido no se pudo establecer. Esa ejecución no se cuenta como aprobada. No se usaron grabaciones privadas.
 
 Pendiente: transcripción real con large-v3, GPU, montaje de Drive y representación visual interactiva del panel dentro de Colab. Las pruebas de archivos locales no garantizan disponibilidad de GPU, permisos ni estabilidad de una sesión de Google.
+
+## Buscador de carpetas con audios
+
+La búsqueda global es opcional y se ejecuta en un hilo con avance y cancelación. Recorre Mi unidad, evita resultados y rutas externas/cíclicas, y cuenta archivos compatibles directamente en cada carpeta. Finaliza como parcial si se cancela, alcanza 60 segundos/3.000 carpetas o encuentra errores de lectura. Permite elegir una carpeta encontrada o audios sueltos de Mi unidad sin escanear recursivamente toda la unidad al comenzar el lote. Las pruebas verifican límites, cancelación, rutas cíclicas, exclusión, conteos, elección y selección directa en raíz. No demuestra que el montaje de Drive vea todos los archivos de la cuenta.
