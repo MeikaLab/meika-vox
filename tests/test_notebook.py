@@ -24,7 +24,8 @@ def test_public_notebook_is_generic() -> None:
 
 def test_notebook_does_not_print_internal_widget_dictionary():
     notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
-    code = next(c for c in notebook["cells"] if c["cell_type"] == "code")
+    # The notebook has a preparation cell and a separate Drive/panel cell.
+    code = next(c for c in reversed(notebook["cells"]) if c["cell_type"] == "code")
     last = ast.parse("".join(code["source"])).body[-1]
     assert isinstance(last, ast.Assign)
     assert isinstance(last.value, ast.Call)
