@@ -5,11 +5,11 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
+from test_pipeline import FakeProvider, fake_audio_quality, fake_media_probe
+
 from meika_vox.export import write_bundle
 from meika_vox.pipeline import run_transcription
 from meika_vox.providers.whisperx_provider import WhisperXProvider
-
-from test_pipeline import FakeProvider, fake_audio_quality, fake_media_probe
 
 SPEC = importlib.util.spec_from_file_location(
     "vox_user_batch", Path(__file__).parents[1] / "scripts/colab_batch.py"

@@ -1,6 +1,7 @@
 """Guided Colab controls. Imported only by the notebook; no public web server."""
 from __future__ import annotations
 
+import fcntl
 import importlib.util
 import json
 import re
@@ -207,6 +208,13 @@ def build_panel(repo: Path, root: Path) -> dict:
         if not access_only and (not selected or (not gpu and not cpu_consent.value)):
             update_stage("Selecciona audios y comprueba el modo de procesamiento.")
             return
+        lock_handle = (Path(tempfile.gettempdir()) / "meika_vox_batch.lock").open("a")
+        try:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            lock_handle.close()
+            update_stage("Ya hay un lote activo en esta sesión. Espera a que termine.")
+            return
         # Freeze settings before a worker starts; never read changing widget values mid-run.
         settings = {"project": project_input.value, "language": language.value,
                     "folder": folder.value, "diarize": diarize.value,
@@ -332,7 +340,11 @@ def build_panel(repo: Path, root: Path) -> dict:
                 try:
                     if provider:
                         provider.release()
+                except Exception:
+                    note("Los modelos se liberarán al reiniciar la sesión.")
                 finally:
+                    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+                    lock_handle.close()
                     done_event.set()
                 state["busy"] = False
                 for control in controls:
@@ -343,7 +355,7 @@ def build_panel(repo: Path, root: Path) -> dict:
                 ready()
 
         threading.Thread(target=heartbeat, daemon=True).start()
-        threading.Thread(target=work, daemon=True).start()
+        threading.Thread(target=work, name="MEIKA_Vox_batch", daemon=True).start()
 
     def start_batch(_):
         launch([Path(value) for value in recordings.value])

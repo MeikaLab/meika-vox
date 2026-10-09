@@ -15,6 +15,7 @@ SPEC.loader.exec_module(ui)
 
 def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
     import IPython.display
+
     import meika_vox.pipeline
     import meika_vox.providers.whisperx_provider
     import meika_vox.runtime

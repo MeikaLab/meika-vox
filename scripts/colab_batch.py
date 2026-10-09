@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import re
 import shutil
-import zipfile
 import subprocess
+import zipfile
 from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
@@ -317,7 +317,9 @@ def process_folder(
                         legacy_run = Path(legacy_path)
                         info = json.loads((legacy_run / "manifest.json").read_text())
                         run_info = info["run"]
-                        changes = json.loads((legacy_run / "normalization_changes.json").read_text())
+                        changes = json.loads(
+                            (legacy_run / "normalization_changes.json").read_text()
+                        )
                         same = (
                             info["asset"]["project_id"] == desired.get("--project-id")
                             and run_info["asr_model"] == desired.get("--model", "small")
