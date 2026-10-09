@@ -7,8 +7,8 @@ from collections.abc import Iterable
 
 _HF_TOKEN = re.compile(r"hf_[A-Za-z0-9_-]{8,}")
 _CREDENTIAL = re.compile(
-    r"(?i)\\b(authorization|bearer|api[_-]?key|token|password|secret)"
-    r"(\\s*[:=]\\s*|\\s+)([^\\s,\"';]{8,})"
+    r"(?i)\b(authorization|bearer|api[_-]?key|token|password|secret)"
+    r"(\s*[:=]\s*|\s+)([^\s,\"';]{8,})"
 )
 
 
