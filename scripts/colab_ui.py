@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import UTC, datetime
 import threading
 import time
 import unicodedata
@@ -31,6 +32,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     from IPython.display import display
 
     from meika_vox.export import write_bundle
+    from meika_vox.redact import redact, tail
     from meika_vox.normalization import load_glossary
     from meika_vox.pipeline import run_transcription
     from meika_vox.providers.isolated_provider import IsolatedWhisperXProvider as WhisperXProvider
@@ -146,7 +148,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                 find, found_folders, speaker_count]
 
     def note(message):
-        details.append_stdout(re.sub(r"hf_[A-Za-z0-9]+", "[clave oculta]", str(message)) + "\n")
+        details.append_stdout(redact(message) + "\n")
 
     def safe_folder(value):
         path = (root / value).resolve()
@@ -507,7 +509,42 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                                            ("project", "language", "folder")}), encoding="utf-8")
                 preferences_tmp.replace(preferences)
 
+                def save_engine_log(exc, audio=None):
+                    """Save sanitized engine failures to Drive."""
+                    try:
+                        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+                        log_dir = output / "logs"
+                        log_dir.mkdir(parents=True, exist_ok=True)
+                        native = provider.diagnostics() if provider and hasattr(
+                            provider, "diagnostics"
+                        ) else ""
+                        body = "\n".join([
+                            f"Momento UTC: {stamp}",
+                            f"Audio: {audio.name if audio else '-'}",
+                            f"Etapa: {getattr(exc, 'stage', '') or state.get('stage', '-')}",
+                            f"Tipo: {getattr(exc, 'error_type', type(exc).__name__)}",
+                            f"Causa: {exc}",
+                            "--- Traceback motor ---",
+                            getattr(exc, "traceback", "") or "-",
+                            "--- Salida nativa ---",
+                            native or "-",
+                        ])
+                        target = log_dir / f"error_motor_{stamp}.log"
+                        target.write_text(
+                            redact(tail(body, 12000), [token]), encoding="utf-8"
+                        )
+                        note(f"Diagnóstico guardado: {target.relative_to(root)}")
+                    except (OSError, ValueError):
+                        note("No se pudo guardar el diagnóstico en Drive.")
+
                 def runner(audio, destination):
+                    try:
+                        return run_one(audio, destination)
+                    except Exception as exc:
+                        save_engine_log(exc, audio)
+                        raise
+
+                def run_one(audio, destination):
                     update_stage(f"Copiando temporalmente {audio.name}")
                     with tempfile.TemporaryDirectory(prefix="meika-vox-") as scratch:
                         local = Path(scratch) / audio.name
@@ -597,7 +634,8 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                 elif isinstance(exc, PermissionError):
                     update_stage("Drive no permite guardar. Reconecta Drive y reintenta.")
                 # No upstream exception text or tokens enter shared notebook output.
-                note(f"Tipo de error: {type(exc).__name__}")
+                note(f"Error técnico: {redact(exc, [token])[:700]}")
+                save_engine_log(exc)
             finally:
                 try:
                     if provider:
