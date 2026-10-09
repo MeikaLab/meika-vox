@@ -120,7 +120,7 @@ def run_transcription(
     segments: list[TranscriptSegment] = []
 
     for segment_index, item in enumerate(result.segments):
-        segment_id = make_segment_id(asset.audio_asset_id, segment_index)
+        segment_id = make_segment_id(asset.audio_asset_id, segment_index, run_id=run_id)
         word_ids: list[str] = []
 
         for word_index, provider_word in enumerate(item.words):
@@ -172,6 +172,13 @@ def run_transcription(
 
     turns = build_speaker_turns(segments, max_gap_ms=turn_gap_ms)
     qa = validate_segments(segments) + validate_words(words, segments)
+    provider_flags = [
+        {"code": "DIARIZATION_FAILED", "severity": "REVIEW_REQUIRED", "message": message,
+         "segment_id": None, "word_id": None}
+        for message in result.warnings
+    ]
+    if provider_flags:
+        run.status = RunStatus.COMPLETED_WITH_WARNINGS
     if any(flag.severity in {"WARNING", "REVIEW_REQUIRED", "ERROR"} for flag in qa):
         run.status = RunStatus.COMPLETED_WITH_WARNINGS
 
@@ -192,5 +199,5 @@ def run_transcription(
                 "word_id": flag.word_id,
             }
             for flag in qa
-        ],
+        ] + provider_flags,
     )

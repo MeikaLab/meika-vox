@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .hashing import sha256_file
 from .pipeline import PipelineBundle
 
 
@@ -51,9 +52,14 @@ def write_bundle(bundle: PipelineBundle, output_root: str | Path) -> Path:
     _write_jsonl(turns_jsonl, bundle.turns)
 
     with normalized_txt.open("w", encoding="utf-8") as handle:
+        for flag in bundle.qa_flags:
+            if flag["code"] == "DIARIZATION_FAILED":
+                handle.write(f"OBSERVACIÓN: {flag['message']}\n\n")
         for turn in bundle.turns:
             start = turn.start_ms / 1000
             label = turn.speaker_label or turn.speaker_cluster_id
+            if label == "UNKNOWN":
+                label = "Voz sin identificar"
             text = turn.text_normalized or turn.text_raw
             handle.write(f"[{start:09.3f}] {label}: {text}\n\n")
 
@@ -94,6 +100,9 @@ def write_bundle(bundle: PipelineBundle, output_root: str | Path) -> Path:
             "review_events": review_events_path.name,
             "qa": qa_path.name,
         },
+    }
+    manifest["checksums"] = {
+        path.name: sha256_file(path) for path in run_dir.iterdir() if path.is_file()
     }
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2),

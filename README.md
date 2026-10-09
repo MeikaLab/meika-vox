@@ -11,17 +11,22 @@ Código abierto para procesar entrevistas, reuniones, talleres y grupos focales 
 1. Abre el botón **Abrir en Google Colab** y entra con tu cuenta Google.
 2. En **Entorno de ejecución → Cambiar tipo de entorno de ejecución**, elige GPU si está disponible.
 3. Pulsa **Ejecutar todas** y autoriza tu Google Drive.
-4. Escribe el nombre del proyecto, elige idioma y la carpeta de audios.
-5. Pulsa **Transcribir carpeta**. Los audios y subcarpetas se procesan en lote.
-6. Revisa los TXT y paquetes técnicos en `Mi unidad/MEIKA_Vox/Proyectos/<nombre_proyecto>/Transcripciones`.
+4. En el panel elige una carpeta específica de Mi unidad y pulsa **Buscar audios aquí**.
+5. Confirma proyecto, idioma y audios. Pulsa **Transcribir seleccionados**.
+6. Descarga el ZIP de textos o revisa `Mi unidad/MEIKA_Vox/Proyectos/<nombre_proyecto>/Transcripciones/Lectura`.
 
-El sistema reanuda el lote y omite los archivos ya completados con el mismo audio y configuración. Usa WhisperX **large-v3** con GPU disponible y **small** en CPU si no hay acelerador. Los tiempos y la disponibilidad de GPU de Colab son variables.
+[Guía breve: voces, progreso, recuperación y límites](docs/COLAB_USUARIOS.md).
+
+El sistema reanuda el lote y omite los archivos ya completados con el mismo audio y configuración. Usa WhisperX **large-v3** con GPU disponible y **small** en CPU solamente cuando el usuario acepta expresamente ese modo. Los tiempos y la disponibilidad de GPU de Colab son variables.
 
 ## Características
 
 - Reconocimiento de voz y alineación por palabra con WhisperX.
 - Separación de hablantes opcional con pyannote (requiere token y autorización).
-- Selección de proyecto, idioma y carpeta de Drive.
+- Panel guiado: carpeta acotada, selección de audios, idioma y proyecto.
+- Progreso por etapas, detención tras el audio actual y reintento de pendientes.
+- Descarga ZIP de textos; resultados verificados y versiones técnicas conservadas.
+- Modelos reutilizados dentro del lote y liberados al terminar.
 - Glosario opcional en JSON aportado por cada usuario (no se aplica uno automáticamente).
 - Trazabilidad: SHA-256, metadatos ffprobe, texto original, normalización conservadora, timestamps y QA.
 - Resultados TXT y archivos JSON/JSONL; reporte del lote y reanudación de procesos interrumpidos.

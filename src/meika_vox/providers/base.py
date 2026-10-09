@@ -42,6 +42,7 @@ class ProviderResult:
     min_speakers: int | None = None
     max_speakers: int | None = None
     detected_speakers: int | None = None
+    warnings: Sequence[str] = ()
 
 
 class TranscriptionProvider(Protocol):

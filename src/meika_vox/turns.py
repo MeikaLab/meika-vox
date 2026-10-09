@@ -38,7 +38,9 @@ def build_speaker_turns(
 
         turns.append(
             SpeakerTurn(
-                turn_id=make_turn_id(first.audio_asset_id, index),
+                turn_id=make_turn_id(
+                    first.audio_asset_id, index, run_id=first.transcription_run_id,
+                ),
                 transcription_run_id=first.transcription_run_id,
                 audio_asset_id=first.audio_asset_id,
                 turn_index=index,
@@ -75,7 +77,9 @@ def build_speaker_turns(
         gap_ms = segment.start_ms - previous.end_ms
         same_speaker = segment.speaker_cluster_id == previous.speaker_cluster_id
 
-        if same_speaker and gap_ms <= max_gap_ms:
+        same_run = segment.transcription_run_id == previous.transcription_run_id
+        same_asset = segment.audio_asset_id == previous.audio_asset_id
+        if same_run and same_asset and same_speaker and gap_ms <= max_gap_ms:
             bucket.append(segment)
         else:
             flush()

@@ -24,10 +24,13 @@ def make_run_id(now: datetime | None = None) -> str:
     return f"RUN-{timestamp}-{uuid4().hex[:6].upper()}"
 
 
-def make_segment_id(audio_asset_id: str, segment_index: int) -> str:
+def make_segment_id(
+    audio_asset_id: str, segment_index: int, *, run_id: str | None = None
+) -> str:
     if segment_index < 0:
         raise ValueError("segment_index must be >= 0")
-    return f"{audio_asset_id}-SEG-{segment_index:06d}"
+    scope = f"{audio_asset_id}-{run_id}" if run_id else audio_asset_id
+    return f"{scope}-SEG-{segment_index:06d}"
 
 
 def make_word_id(segment_id: str, word_index: int) -> str:
@@ -36,10 +39,13 @@ def make_word_id(segment_id: str, word_index: int) -> str:
     return f"{segment_id}-WORD-{word_index:06d}"
 
 
-def make_turn_id(audio_asset_id: str, turn_index: int) -> str:
+def make_turn_id(
+    audio_asset_id: str, turn_index: int, *, run_id: str | None = None
+) -> str:
     if turn_index < 0:
         raise ValueError("turn_index must be >= 0")
-    return f"{audio_asset_id}-TURN-{turn_index:06d}"
+    scope = f"{audio_asset_id}-{run_id}" if run_id else audio_asset_id
+    return f"{scope}-TURN-{turn_index:06d}"
 
 
 def make_review_event_id() -> str:
