@@ -10,7 +10,6 @@ import pytest
 from meika_vox.providers.isolated_provider import EngineError, IsolatedWhisperXProvider
 from meika_vox.redact import redact
 
-
 WORKER = """
 import json, sys
 for line in sys.stdin:
