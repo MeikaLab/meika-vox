@@ -2,7 +2,7 @@
 
 1. Abre el [cuaderno público](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/main/notebooks/MEIKA_Vox_Colab.ipynb).
 2. Selecciona GPU en **Entorno de ejecución → Cambiar tipo de entorno de ejecución**, si está disponible.
-3. Pulsa **Ejecutar todas**, espera la preparación y autoriza Drive.
+3. Pulsa ▶ en **Preparar y abrir MEIKA Vox**, justo debajo de las instrucciones. Espera y autoriza Drive; el panel aparece en esa misma celda, sin bajar al final.
 4. En el panel navega hasta una carpeta concreta o escribe su ruta desde Mi unidad. Pulsa **Buscar audios aquí**. Todos quedan seleccionados; Ctrl/Cmd permite cambiar la selección.
 5. Escribe el proyecto, confirma idioma y pulsa **Transcribir seleccionados**.
 6. Al terminar, descarga el ZIP o busca el proyecto en Drive. Los TXT están en `MEIKA_Vox/Proyectos/<proyecto>/Transcripciones/Lectura`.

@@ -12,7 +12,7 @@ Código abierto para procesar entrevistas, reuniones, talleres y grupos focales 
 
 1. Abre el botón **Abrir en Google Colab** y entra con tu cuenta Google.
 2. En **Entorno de ejecución → Cambiar tipo de entorno de ejecución**, elige GPU si está disponible.
-3. Pulsa **Ejecutar todas** y autoriza tu Google Drive.
+3. Pulsa ▶ en **Preparar y abrir MEIKA Vox** y autoriza tu Drive. El panel aparece arriba, en esa misma celda.
 4. En el panel elige una carpeta específica de Mi unidad y pulsa **Buscar audios aquí**.
 5. Confirma proyecto, idioma y audios. Pulsa **Transcribir seleccionados**.
 6. Descarga el ZIP de textos o revisa `Mi unidad/MEIKA_Vox/Proyectos/<nombre_proyecto>/Transcripciones/Lectura`.
