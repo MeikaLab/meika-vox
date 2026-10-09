@@ -201,7 +201,9 @@ def readable_copy(audio: Path, run: Path, output: Path, checksum: str) -> Path:
     label = _activity_label(audio)
     destination = output / "Lectura"
     destination.mkdir(parents=True, exist_ok=True)
-    target = destination / f"{label}__Transcripcion.txt"
+    # Include a short source checksum so two recordings with identical activity
+    # labels cannot silently overwrite each other's readable transcript.
+    target = destination / f"{label}__{fingerprint(audio)[:12]}__Transcripcion.txt"
     shutil.copyfile(run / "transcript_normalized.txt", target)
     return target
 
