@@ -26,3 +26,7 @@ Pendiente: transcripción real con large-v3, GPU, montaje de Drive y representac
 ## Buscador de carpetas con audios
 
 La búsqueda global es opcional y se ejecuta en un hilo con avance y cancelación. Recorre Mi unidad, evita resultados y rutas externas/cíclicas, y cuenta archivos compatibles directamente en cada carpeta. Finaliza como parcial si se cancela, alcanza 60 segundos/3.000 carpetas o encuentra errores de lectura. Permite elegir una carpeta encontrada o audios sueltos de Mi unidad sin escanear recursivamente toda la unidad al comenzar el lote. Las pruebas verifican límites, cancelación, rutas cíclicas, exclusión, conteos, elección y selección directa en raíz. No demuestra que el montaje de Drive vea todos los archivos de la cuenta.
+
+## Propuesta de modalidades y manual
+
+Modalidades visibles fuera de opciones avanzadas: texto sin token, Sherpa sin token (pendiente y bloqueado), pyannote con token. Solo pyannote muestra la configuración de claves. El cuaderno de pruebas descarga la rama de propuesta y utiliza MEIKA_Vox_Pruebas para resultados separados. Los tests verifican que elegir Sherpa no pueda iniciar silenciosamente otro modo y que las instrucciones de token se oculten al volver a solo texto. No se repitió la ejecución de reconocimiento bloqueada ni se acredita una prueba en GPU.

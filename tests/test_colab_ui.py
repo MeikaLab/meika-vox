@@ -68,6 +68,17 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
     panel["choices"].children[0].value = True
     panel["cpu_consent"].value = True
     assert not panel["start"].disabled
+    # An announced engine must never silently run transcription without voices.
+    panel["mode"].value = "sherpa"
+    assert panel["start"].disabled
+    assert "aún no está disponible" in panel["start_help"].value
+    assert panel["speaker_setup"].layout.display == "none"
+    panel["mode"].value = "pyannote"
+    assert panel["speaker_setup"].layout.display == ""
+    assert "token" in panel["mode_help"].value
+    panel["mode"].value = "text"
+    assert panel["speaker_setup"].layout.display == "none"
+    assert not panel["start"].disabled
     panel["start"].click()
     deadline = time.monotonic() + 10
     while panel["state"]["busy"] and time.monotonic() < deadline:
@@ -212,3 +223,18 @@ def test_find_and_choose_folder_with_audio(tmp_path, monkeypatch):
     assert len(panel["recordings"].value) == 1  # Direct root audio only, not nested recordings.
     assert panel["recordings"].value == (str(tmp_path / "audio_suelto.m4a"),)
     assert not panel["start"].disabled
+
+
+def test_trial_panel_keeps_results_separate(tmp_path, monkeypatch):
+    import IPython.display
+
+    import meika_vox.runtime
+
+    monkeypatch.setattr(IPython.display, "display", lambda *args: None)
+    monkeypatch.setattr(meika_vox.runtime, "inspect_runtime",
+                        lambda: SimpleNamespace(asr_ready=True, cuda_available=True))
+    panel = ui.build_panel(ROOT, tmp_path, test_mode=True)
+    assert (tmp_path / "MEIKA_Vox_Pruebas" / "Proyectos").is_dir()
+    assert not (tmp_path / "MEIKA_Vox" / "Proyectos").exists()
+    assert panel["mode"].value == "text"
+    assert panel["speaker_setup"].layout.display == "none"

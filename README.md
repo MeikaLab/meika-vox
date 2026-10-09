@@ -11,15 +11,27 @@ Código abierto para procesar entrevistas, reuniones, talleres y grupos focales 
 ## Pasos
 
 1. Abre el botón **Abrir en Google Colab** y entra con tu cuenta Google.
-2. En **Entorno de ejecución → Cambiar tipo de entorno de ejecución**, elige GPU si está disponible.
+2. En **Entorno de ejecución → Cambiar tipo de entorno de ejecución**, elige GPU (T4 si aparece), si está disponible.
 3. Pulsa ▶ en **Preparar y abrir MEIKA Vox** y autoriza tu Drive. El panel aparece arriba, en esa misma celda.
 4. Elige una carpeta de Mi unidad en la lista: se abre y busca los audios automáticamente.
-5. Pulsa **Transcribir N audios**. Se usa español y el nombre de la carpeta como proyecto; puedes cambiarlos en el panel.
+5. Elige **Solo transcribir · sin token** o **Separar hablantes · con token** y pulsa **Transcribir N audios**. Se usa español y el nombre de la carpeta como proyecto; puedes cambiarlos en el panel.
 6. Descarga el ZIP de textos o revisa `Mi unidad/MEIKA_Vox/Proyectos/<nombre_proyecto>/Transcripciones/Lectura`.
 
 [Guía breve: voces, progreso, recuperación y límites](docs/COLAB_USUARIOS.md).
 
 El sistema reanuda el lote y omite los archivos ya completados con el mismo audio y configuración. Usa WhisperX **large-v3** con GPU disponible y **small** en CPU solamente cuando el usuario acepta expresamente ese modo. Los tiempos y la disponibilidad de GPU de Colab son variables.
+
+## Modalidades
+
+| Modalidad | Clave (token) | Estado |
+|---|---|---|
+| Solo transcribir | No | Implementada: texto y tiempos |
+| Separar hablantes con Sherpa-ONNX | No | Próximamente; aún no ejecutable |
+| Separar hablantes con pyannote | Sí, gratuita de Hugging Face | Implementada; requiere autorización del modelo |
+
+Las dos modalidades disponibles usan el mismo modelo de transcripción. No hay una comparación que permita afirmar que un motor de voces es el mejor para tus grabaciones.
+
+[Cuaderno de pruebas del panel](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/feat/user-modes-guide/notebooks/MEIKA_Vox_Colab_Pruebas.ipynb): guarda en `MEIKA_Vox_Pruebas`, separado de los resultados habituales. Su disponibilidad no certifica una prueba real de reconocimiento aprobada.
 
 ## Características
 
