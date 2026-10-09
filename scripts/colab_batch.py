@@ -217,6 +217,7 @@ def process_folder(
     configuration: str = "",
     emit: Callable[[str], None] = print,
     execute: Callable = subprocess.run,
+    on_progress: Callable[[dict], None] | None = None,
 ) -> dict:
     """Persist successful results after each file; retry failures on the next invocation."""
     audios = discover_audio(folder, exclude=output)
@@ -232,7 +233,22 @@ def process_folder(
         state = {}
     settings = sha256(json.dumps([command, configuration]).encode()).hexdigest()
     report = {"completed": [], "skipped": [], "failed": []}
+
+    def notify(event: str, index: int, audio: Path | None = None) -> None:
+        if on_progress is not None:
+            on_progress({
+                "event": event,
+                "index": index,
+                "total": len(audios),
+                "audio": audio.name if audio is not None else None,
+                "completed": len(report["completed"]),
+                "skipped": len(report["skipped"]),
+                "failed": len(report["failed"]),
+            })
+
+    notify("ready", 0)
     for index, audio in enumerate(audios, 1):
+        notify("started", index, audio)
         emit(f"[{index}/{len(audios)}] {audio.name}")
         try:
             checksum = fingerprint(audio)
@@ -242,6 +258,7 @@ def process_folder(
                 text = readable_copy(audio, Path(old), output, checksum)
                 report["skipped"].append({"audio": str(audio), "text": str(text)})
                 emit("Ya terminado: se omite.")
+                notify("skipped", index, audio)
                 continue
             before = set(output.rglob("manifest.json"))
             result = execute(
@@ -268,10 +285,13 @@ def process_folder(
             text = readable_copy(audio, run, output, checksum)
             report["completed"].append({"audio": str(audio), "run": str(run), "text": str(text)})
             emit(f"Texto guardado: {text}")
+            notify("completed", index, audio)
         except Exception as exc:
             report["failed"].append({"audio": str(audio), "error": str(exc)})
             emit(f"PENDIENTE: {exc}")
+            notify("failed", index, audio)
     (output / "batch_last_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
+    notify("finished", len(audios))
     emit(
         f"Terminados: {len(report['completed'])} · ya listos: {len(report['skipped'])}"
         f" · pendientes: {len(report['failed'])}"
