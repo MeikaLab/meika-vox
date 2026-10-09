@@ -447,9 +447,11 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                     min_speakers=settings["speakers"], max_speakers=settings["speakers"],
                     on_stage=update_stage, allow_diarization_fallback=True,
                 )
-                state["checking_speakers"] = bool(settings["diarize"] or access_only)
-                if settings["diarize"] or access_only:
-                    update_stage("Preparando separación de voces; primera descarga puede tardar")
+                # La modalidad de transcripción nunca se bloquea por la preparación de voces.
+                # El proveedor comprueba diarización después del ASR y conserva el texto si falla.
+                state["checking_speakers"] = bool(access_only)
+                if access_only:
+                    update_stage("Comprobando separación de voces")
                     provider.check_diarization()
                     speaker_status.value = "Acceso comprobado."
                 state["checking_speakers"] = False
