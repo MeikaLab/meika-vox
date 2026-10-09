@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import contextlib
 import json
-import sys
 import re
-import traceback
+import sys
 from dataclasses import asdict
 from pathlib import Path
 
