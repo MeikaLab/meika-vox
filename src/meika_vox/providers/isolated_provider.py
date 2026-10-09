@@ -63,7 +63,7 @@ class IsolatedWhisperXProvider:
         while True:
             if deadline is not None and time.monotonic() >= deadline:
                 self.process.terminate()
-                raise TimeoutError("La preparación del motor superó el límite de espera.")
+                raise TimeoutError("El motor no informó cambios de etapa dentro del tiempo permitido.")
             try:
                 event = self.events.get(timeout=0.2)
             except queue.Empty:
@@ -74,6 +74,10 @@ class IsolatedWhisperXProvider:
                 continue
             kind = event.get("kind")
             if kind == "stage":
+                # Long recordings legitimately take time; only reset when the worker
+                # reports a new stage, never infer progress from elapsed wall clock.
+                if timeout is not None:
+                    deadline = time.monotonic() + timeout
                 self.on_stage(event["message"])
             elif kind in {"ok", "result"}:
                 return event.get("value")
@@ -94,7 +98,7 @@ class IsolatedWhisperXProvider:
         self._request({"action": "check"}, timeout=self.preparation_timeout)
 
     def transcribe(self, audio_path: Path) -> ProviderResult:
-        result = self._request({"action": "transcribe", "path": str(audio_path)})
+        result = self._request({"action": "transcribe", "path": str(audio_path)}, timeout=3600)
         result["segments"] = tuple(ProviderSegment(
             **{**segment, "words": tuple(ProviderWord(**word) for word in segment["words"])},
         ) for segment in result["segments"])
