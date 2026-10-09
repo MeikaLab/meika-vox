@@ -1,0 +1,76 @@
+name: WhisperX real engine smoke test
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "pyproject.toml"
+      - "notebooks/**"
+      - ".github/workflows/engine_smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  whisperx-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prepare audio utilities
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak-ng
+      - name: Install real ASR stack (no Sherpa)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[whisperx]"
+          python -m pip check
+      - name: Save resolved dependency versions
+        if: always()
+        run: |
+          python -m pip freeze > versions.txt
+          python -V
+      - name: Import WhisperX and Transformers in a clean process
+        run: |
+          python - <<'PY'
+          import torch, transformers, whisperx
+          import whisperx.asr, whisperx.alignment
+          from transformers import Pipeline
+          print("torch:", torch.__version__)
+          print("transformers:", transformers.__version__)
+          print("whisperx imported:", whisperx.__file__)
+          PY
+      - name: Produce Spanish speech sample
+        run: |
+          espeak-ng -v es -s 130 -w sample.wav "Buenas tardes. Este encuentro comunitario trata sobre salud y territorio. Las personas participan en la planificación de su comuna."
+          ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1 sample.wav
+      - name: Real WhisperX transcription, tiny CPU, no token
+        run: |
+          meika-vox transcribe sample.wav --project-id integration --language es --model tiny --device cpu --compute-type int8 --batch-size 1 --output out
+          find out -type f | sort
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          runs = list(Path("out").rglob("manifest.json"))
+          assert len(runs) == 1, runs
+          data = json.loads(runs[0].read_text())
+          assert data["counts"]["segments"] > 0, data["counts"]
+          txt = runs[0].parent / "transcript_normalized.txt"
+          assert txt.read_text().strip(), "Empty transcript"
+          assert data["checksums"], "Missing output checksums"
+          print("TRANSCRIPTION OK", txt.read_text()[:300])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-engine-smoke
+          path: |
+            versions.txt
+            out/
+          retention-days: 14
