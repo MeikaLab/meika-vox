@@ -19,7 +19,7 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
     import IPython.display
 
     import meika_vox.pipeline
-    import meika_vox.providers.whisperx_provider
+    import meika_vox.providers.isolated_provider
     import meika_vox.runtime
 
     original_pipeline = meika_vox.pipeline.run_transcription
@@ -34,7 +34,8 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
         def release(self):
             pass
 
-    monkeypatch.setattr(meika_vox.providers.whisperx_provider, "WhisperXProvider", PanelProvider)
+    monkeypatch.setattr(meika_vox.providers.isolated_provider,
+                        "IsolatedWhisperXProvider", PanelProvider)
 
     failure = {"enabled": False}
 
@@ -238,3 +239,20 @@ def test_trial_panel_keeps_results_separate(tmp_path, monkeypatch):
     assert not (tmp_path / "MEIKA_Vox" / "Proyectos").exists()
     assert panel["mode"].value == "text"
     assert panel["speaker_setup"].layout.display == "none"
+
+
+def test_refresh_shows_elapsed_time_without_claiming_audio_progress(tmp_path, monkeypatch):
+    import IPython.display
+
+    import meika_vox.runtime
+
+    monkeypatch.setattr(IPython.display, "display", lambda *args: None)
+    monkeypatch.setattr(meika_vox.runtime, "inspect_runtime",
+                        lambda: SimpleNamespace(asr_ready=True, cuda_available=True))
+    panel = ui.build_panel(ROOT, tmp_path)
+    panel["state"].update(busy=True, since=time.monotonic() - 70,
+                          last_stage=time.monotonic() - 70, stage="Preparando voces")
+    panel["refresh_status"].click()
+    assert "01:10" in panel["stage"].value
+    assert "no confirma avance" in panel["stage"].value
+    assert "Preparando voces" in panel["stage"].value

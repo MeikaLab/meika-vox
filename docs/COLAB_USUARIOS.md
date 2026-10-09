@@ -37,7 +37,7 @@ El modelo de segmentación ONNX de Sherpa deriva de pyannote 3.0; no es Communit
 
 ## Progreso y recuperación
 
-La barra mide archivos revisados, incluidos los que fallan. El balance distingue guardados, ya existentes, errores y archivos aún sin procesar. La etapa y el reloj muestran actividad; no son un porcentaje interno ni una estimación de tiempo restante.
+La barra mide archivos revisados, incluidos los que fallan. El balance distingue guardados, ya existentes, errores y archivos aún sin procesar. La etapa indica la operación actual. El reloj muestra cuánto tiempo lleva el lote, incluso durante una espera: no prueba que el audio avance. **Actualizar estado** vuelve a mostrar el estado interno. Si pasan 60 segundos sin nueva etapa, aparece un aviso de espera; no se declara un fallo solo por ello. Las descargas de Sherpa muestran MB recibidos y la separación de voces muestra su porcentaje cuando el motor lo informa. La barra de lote sigue midiendo archivos, no minutos de audio.
 
 **Detener después de este audio** guarda el resultado actual antes de parar. **Reintentar pendientes** procesa errores y archivos no iniciados. Si Colab pierde su sesión, vuelve a ejecutar todo y selecciona el mismo proyecto, audios y configuración. Se omiten resultados íntegros y se recuperan manifiestos válidos si se perdió el índice. El audio que estaba en curso puede repetirse: no hay reanudación interna por fragmentos.
 
@@ -53,4 +53,11 @@ Colab gratuito no garantiza GPU ni duración. Consulta las [condiciones y límit
 
 ## Cuaderno separado de pruebas
 
-El cuaderno MEIKA_Vox_Colab_Pruebas usa la rama de propuesta y guarda en `MEIKA_Vox_Pruebas/Proyectos`, separado de la carpeta habitual. Evalúa primero un audio corto: comprueba texto, tiempos, etiquetas si corresponden y descarga. Al repetir con el mismo proyecto y configuración debe aparecer como ya existente. No es un certificado de calidad ni una prueba real aprobada.
+El cuaderno MEIKA_Vox_Colab_Pruebas usa la versión pública y guarda en `MEIKA_Vox_Pruebas/Proyectos`, separado de la carpeta habitual. Evalúa primero un audio corto: comprueba texto, tiempos, etiquetas si corresponden y descarga. Al repetir con el mismo proyecto y configuración debe aparecer como ya existente. No es un certificado de calidad ni una prueba real aprobada.
+
+
+## Si parece detenido
+
+Durante la preparación verás Cargando librería, Conectando, Descargando… MB o Cargando modelos. La preparación de voces tiene un límite de cinco minutos: si lo supera, se detiene el proceso del motor y aparece un mensaje para reintentar o elegir Solo transcribir. El reconocimiento de un audio largo no usa ese límite. El motor trabaja en un proceso separado del panel para que una librería nativa no bloquee su reloj. Si el proceso termina inesperadamente, el panel informa el fallo y permite recuperar pendientes.
+
+Una sesión que ya está abierta conserva el código cargado. Para recibir una actualización hay que preparar nuevamente el panel, después de detener la tarea activa; actualizar GitHub no modifica una ejecución que ya comenzó.

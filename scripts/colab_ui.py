@@ -31,7 +31,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     from meika_vox.export import write_bundle
     from meika_vox.normalization import load_glossary
     from meika_vox.pipeline import run_transcription
-    from meika_vox.providers.whisperx_provider import WhisperXProvider
+    from meika_vox.providers.isolated_provider import IsolatedWhisperXProvider as WhisperXProvider
     from meika_vox.runtime import inspect_runtime
 
     spec = importlib.util.spec_from_file_location("vox_batch", repo / "scripts/colab_batch.py")
@@ -126,6 +126,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     progress = w.IntProgress(min=0, max=1, value=0, description="Lote:")
     current_audio = w.HTML()
     stage = w.HTML("Esperando selección.")
+    refresh_status = w.Button(description="Actualizar estado")
     summary = w.HTML()
     results = w.HTML()
     download = w.Button(description="Descargar textos ZIP", disabled=True)
@@ -370,15 +371,24 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         except Exception:
             return None
 
+    def render_status(*_):
+        elapsed = max(0, int(time.monotonic() - state["since"])) if state["since"] else 0
+        stage.value = (f"{escape(state['stage'])} · Tiempo del lote: "
+                       f"{elapsed // 60:02d}:{elapsed % 60:02d}")
+        if state["busy"]:
+            quiet = int(time.monotonic() - state.get("last_stage", state["since"]))
+            if quiet >= 60:
+                stage.value += (f" · {quiet}s sin nueva etapa. El reloj indica espera, "
+                                "no confirma avance del audio.")
+
     def heartbeat():
         while not done_event.wait(1):
-            elapsed = int(time.monotonic() - state["since"])
-            stage.value = (f"{escape(state['stage'])} · Tiempo del lote: "
-                           f"{elapsed // 60:02d}:{elapsed % 60:02d}")
+            render_status()
 
     def update_stage(message):
         state["stage"] = message
-        stage.value = escape(message)
+        state["last_stage"] = time.monotonic()
+        render_status()
 
     def launch(selected, access_only=False):
         if state["busy"] or state["finding"]:
@@ -407,11 +417,13 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             speaker_status.value = "Comprobando acceso; la primera descarga puede tardar…"
         state["busy"] = True
         state["since"] = time.monotonic()
+        update_stage("Iniciando; cada audio terminado se guarda en Drive")
         done_event.clear()
         stop_event.clear()
         for control in controls:
             control.disabled = True
         start.disabled = retry.disabled = download.disabled = True
+        start.description = "Procesando…"
         if not access_only:
             activity.layout.display = ""
         stop.disabled = access_only
@@ -546,7 +558,10 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                 update_stage(message)
                 if access_only:
                     speaker_status.value = escape(message)
-                if isinstance(exc, (ValueError, FileNotFoundError)):
+                if isinstance(exc, TimeoutError):
+                    update_stage("La preparación de voces superó 5 minutos y se detuvo. "
+                                 "Reintenta o elige Solo transcribir; no se inició el audio.")
+                elif isinstance(exc, (ValueError, FileNotFoundError)):
                     update_stage("Revisa el nombre del proyecto, la carpeta y el glosario. "
                                  "Vuelve a las opciones para corregirlos.")
                 elif isinstance(exc, PermissionError):
@@ -580,7 +595,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
 
         for box in choices.children:
             box.disabled = True
-        threading.Thread(target=heartbeat, daemon=True).start()
+        threading.Thread(target=heartbeat, name="MEIKA_Vox_clock", daemon=True).start()
         threading.Thread(target=work, name="MEIKA_Vox_batch", daemon=True).start()
 
     def start_batch(_):
@@ -629,6 +644,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     cpu_consent.observe(ready, names="value")
     project_input.observe(ready, names="value")
     check.on_click(lambda _: launch([], access_only=True))
+    refresh_status.on_click(render_status)
     start.on_click(start_batch)
     stop.on_click(stop_after)
     retry.on_click(lambda _: launch(state["failed"], access_only=False))
@@ -639,7 +655,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     manual.set_title(0, "Escribir una ruta (opcional)")
     manual.selected_index = None
     # Keep the chosen folder visible while working; no hidden wizard state.
-    activity = w.VBox([progress, current_audio, stage, summary, stop, results,
+    activity = w.VBox([progress, current_audio, stage, refresh_status, summary, stop, results,
                        download, retry, preview, logs])
     activity.layout.display = "none"
     for button in (scan, start, stop, download, retry, check, up, find, cancel_find):
@@ -675,4 +691,5 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             "recursive": recursive, "details": details, "find": find,
             "found_folders": found_folders, "search_status": search_status,
             "cancel_find": cancel_find, "mode": mode, "mode_help": mode_help,
-            "speaker_setup": speaker_setup, "speaker_count": speaker_count}
+            "speaker_setup": speaker_setup, "speaker_count": speaker_count,
+            "refresh_status": refresh_status}
