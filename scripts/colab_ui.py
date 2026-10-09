@@ -635,7 +635,8 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                     update_stage("Drive no permite guardar. Reconecta Drive y reintenta.")
                 # No upstream exception text or tokens enter shared notebook output.
                 note(f"Error técnico: {redact(exc, [token])[:700]}")
-                save_engine_log(exc)
+                if "save_engine_log" in locals():
+                    save_engine_log(exc)
             finally:
                 try:
                     if provider:
