@@ -5,6 +5,8 @@ from __future__ import annotations
 import contextlib
 import json
 import sys
+import re
+import traceback
 from dataclasses import asdict
 from pathlib import Path
 
@@ -46,7 +48,9 @@ def main():
                     raise ValueError("Unknown worker action")
         except Exception as exc:
             # Upstream exception messages may contain HF tokens. Never send them to the panel.
-            emit("error", error_type=type(exc).__name__)
+            message = re.sub(r"hf_[a-zA-Z0-9_-]{12,}", "[CREDENCIAL]", str(exc))
+            message = re.sub(r"(?i)(bearer\\s+)\\S+", r"\\1[CREDENCIAL]", message)
+            emit("error", error_type=type(exc).__name__, message=message[-2500:])
 
 
 if __name__ == "__main__":
