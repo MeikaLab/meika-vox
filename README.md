@@ -31,7 +31,7 @@ El sistema reanuda el lote y omite los archivos ya completados con el mismo audi
 
 Las tres modalidades usan el mismo modelo de transcripción. No hay una comparación que permita afirmar que un motor de voces es el mejor para tus grabaciones.
 
-[Cuaderno de pruebas del panel](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/feat/user-modes-guide/notebooks/MEIKA_Vox_Colab_Pruebas.ipynb): guarda en `MEIKA_Vox_Pruebas`, separado de los resultados habituales. Su disponibilidad no certifica una prueba real de reconocimiento aprobada.
+[Cuaderno de pruebas del panel](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/main/notebooks/MEIKA_Vox_Colab_Pruebas.ipynb): guarda en `MEIKA_Vox_Pruebas`, separado de los resultados habituales. Su disponibilidad no certifica una prueba real de reconocimiento aprobada.
 
 **Validación:** pruebas automáticas de interfaz, integridad y recuperación aprobadas. La ejecución real del panel en GPU de Colab y la calidad de voces en español siguen pendientes; no se anuncia una validación completa.
 

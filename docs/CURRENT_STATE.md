@@ -115,6 +115,7 @@ Examples:
 - explicit CPU/small consent instead of silent model changes;
 - stage activity, elapsed time, stop-after-current and retry-pending controls;
 - cached models within a batch and temporary local audio processing;
+- native speech engines in a persistent subprocess with stage events and preparation timeout;
 - integrity checksums, lost-index recovery and conservative legacy cache migration;
 - run-scoped segment, word and turn identifiers;
 - optional diarization fallback preserving text with a visible QA warning.

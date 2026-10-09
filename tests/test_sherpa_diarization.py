@@ -14,6 +14,7 @@ from meika_vox.providers.whisperx_provider import WhisperXProvider
 
 def test_download_failure_cannot_leave_a_cached_model(tmp_path, monkeypatch):
     class BrokenResponse(io.BytesIO):
+        headers = {}
         def read(self, *args):
             raise OSError("connection lost")
 
@@ -28,7 +29,7 @@ def test_download_failure_cannot_leave_a_cached_model(tmp_path, monkeypatch):
 def test_model_archive_reads_only_fixed_files_and_reuses_cache(tmp_path, monkeypatch):
     requests = []
 
-    def fake_download(url, target):
+    def fake_download(url, target, **kwargs):
         requests.append(url)
         if target.suffix == ".onnx":
             target.write_bytes(b"embedding")
@@ -97,7 +98,8 @@ def test_adapter_config_and_progress_contract(tmp_path, monkeypatch):
              "FastClusteringConfig")
     fake = SimpleNamespace(**{name: config for name in names}, OfflineSpeakerDiarization=Engine)
     monkeypatch.setitem(sys.modules, "sherpa_onnx", fake)
-    monkeypatch.setattr(module, "prepare_models", lambda cache: (Path("seg"), Path("embed")))
+    monkeypatch.setattr(module, "prepare_models",
+                        lambda cache, **kwargs: (Path("seg"), Path("embed")))
     # Use a lightweight DataFrame stand-in; native runtime is intentionally not invoked.
     monkeypatch.setitem(sys.modules, "pandas", SimpleNamespace(
         DataFrame=lambda rows, columns: {"rows": rows, "columns": columns}))
@@ -135,3 +137,14 @@ def test_whisperx_records_sherpa_provenance_and_word_labels(monkeypatch, tmp_pat
     assert result.diarization_model == module.MODEL_ID
     assert result.detected_speakers == 1
     assert result.segments[0].words[0].speaker == "SPEAKER_00"
+
+
+def test_truncated_http_download_is_not_cached(tmp_path, monkeypatch):
+    response = io.BytesIO(b"short")
+    response.headers = {"Content-Length": "100"}
+    monkeypatch.setattr(module, "urlopen", lambda *a, **kw: response)
+    messages = []
+    with pytest.raises(RuntimeError, match="incompleta"):
+        module.download("https://example.test/model", tmp_path / "model", messages.append)
+    assert not (tmp_path / "model").exists()
+    assert any("Descargando" in message for message in messages)

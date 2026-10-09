@@ -39,3 +39,12 @@ Sherpa se integra con modelos de publicaciones públicas, descarga atómica y ex
 Los segmentos sin hablante conocido ya no se unen en un párrafo gigante. Las pruebas del adaptador usan dobles de la API, sin cargar bibliotecas nativas, descargar modelos ni medir precisión. Esto verifica contratos y protección de archivos, no compatibilidad de ejecución nativa o exactitud de voces en Colab. La prueba real previamente bloqueada no se repitió por otra vía.
 
 Los TXT nuevos muestran tiempos HH:MM:SS y etiquetas Hablante 1, Hablante 2, conservando IDs técnicos en JSON. Los textos ya guardados no se reprocesan por cambios de presentación.
+
+
+## Corrección de preparación y estado
+
+Las capturas de usuario permanecieron en Preparando separación de voces, sin reloj visible. No permiten concluir si el bloqueo fue de motor o representación de widgets. La revisión identificó que la carga nativa ocurría en el mismo proceso de los widgets y no había límite global de preparación.
+
+El panel ahora utiliza un proceso persistente separado para WhisperX y los motores de voces, con eventos de etapa, detección de salida inesperada y límite de cinco minutos solo para preparación. Conserva modelos entre audios del lote. Los secretos viajan por stdin del proceso local, nunca en argumentos o salidas. Se descarta stdout ajeno al protocolo y no se muestran mensajes originales de excepciones de los proveedores. El reloj aparece desde el inicio; Actualizar estado permite consultar el estado del panel y una espera prolongada se describe sin afirmar avance del reconocimiento. Las descargas informan bytes y validan Content-Length cuando existe.
+
+Las pruebas del transporte ejecutan subprocess reales con un motor sintético sin conexión de red. Comprueban serialización de palabras, etapas, reutilización, terminación inesperada y timeout. No ejecutan WhisperX/Sherpa ni acreditan precisión de audio, compatibilidad nativa o comunicación de widgets en una sesión Colab real.
