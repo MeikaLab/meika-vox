@@ -138,10 +138,9 @@ class IsolatedWhisperXProvider:
             now = time.monotonic()
             if deadline is not None and now >= deadline:
                 self._stop()
-                raise self._error(
-                    "La preparación del motor superó el límite de espera.",
-                    error_type="TimeoutError", detail=self.diagnostics(600),
-                )
+                error = TimeoutError("La preparación del motor superó el límite de espera.")
+                self.last_error = error
+                raise error
             if stall_timeout is not None and now - last_stage >= stall_timeout:
                 self._stop()
                 self.last_error = TimeoutError(
