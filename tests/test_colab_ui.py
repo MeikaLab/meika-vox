@@ -1,10 +1,11 @@
 """Exercise actual widgets without Google credentials, a GPU or private recordings."""
 import importlib.util
 import json
+import sys
 import time
 import zipfile
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 from test_pipeline import FakeProvider, fake_audio_quality, fake_media_probe
 
@@ -108,6 +109,23 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
     assert "Pendientes:" in panel["summary"].value
     assert any("Synthetic failure" in item.get("text", "")
                for item in panel["details"].outputs)
+    failure["enabled"] = False
+    panel["retry"].click()
+    deadline = time.monotonic() + 10
+    while panel["state"]["busy"] and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert not panel["state"]["busy"]
+    assert panel["state"]["archive"] is not None
+    assert panel["retry"].disabled
+    assert len(list((tmp_path / "MEIKA_Vox").rglob("manifest.json"))) == 2
+    downloads = []
+    google = ModuleType("google")
+    colab = ModuleType("google.colab")
+    colab.files = SimpleNamespace(download=downloads.append)
+    monkeypatch.setitem(sys.modules, "google", google)
+    monkeypatch.setitem(sys.modules, "google.colab", colab)
+    panel["download"].click()
+    assert downloads == [str(panel["state"]["archive"])]
     panel["up"].click()
     assert panel["folder"].value == ""
     # Changing recursion must not erase the folder navigator.

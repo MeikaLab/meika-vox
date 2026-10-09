@@ -11,9 +11,11 @@ MEIKA Vox is a **traceable audio-to-structured-transcript pipeline** for qualita
 ## User-facing operational flow
 
 The public Colab notebook prepares the runtime, connects the user's Drive and opens
-an ipywidgets panel. The panel browses a specific folder inside My Drive, selects
-recordings and language, optionally prepares speaker separation, transcribes the
-selection and offers a text ZIP plus a Drive search link.
+an ipywidgets panel. Choosing a folder opens it and searches automatically, preserving
+its exact name (including trailing spaces). Folder, selection and transcription remain
+on one screen; progress, a text preview, ZIP download and retry controls appear below.
+Spanish is the default and the project name is proposed from the folder. The notebook
+assigns the returned controls to a variable, avoiding a printed dictionary of Drive paths.
 
 Outputs live under `MEIKA_Vox/Proyectos/<project>/Transcripciones`: `Lectura/`
 contains the latest readable texts; asset/run directories preserve technical versions.

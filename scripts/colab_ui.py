@@ -145,6 +145,11 @@ def build_panel(repo: Path, root: Path) -> dict:
         state["failed"] = []
         retry.disabled = True
         retry.layout.display = "none"
+        state["archive"] = None
+        download.disabled = True
+        download.layout.display = "none"
+        activity.layout.display = "none"
+        results.value = preview.value = ""
 
     def ready(*_):
         reason = ""
