@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import traceback
+from collections import deque
 import queue
 import subprocess
 import sys
@@ -24,10 +27,17 @@ class IsolatedWhisperXProvider:
         environment["PYTHONPATH"] = source + os.pathsep + environment.get("PYTHONPATH", "")
         self.process = subprocess.Popen(
             worker_command or [sys.executable, "-u", "-m", "meika_vox.speech_worker"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, bufsize=1, env=environment,
         )
         self.events = queue.Queue()
+        self._stderr_tail = deque(maxlen=80)
+
+        def read_errors():
+            for line in self.process.stderr:
+                self._stderr_tail.append(line.rstrip()[:1000])
+
+        threading.Thread(target=read_errors, name="MEIKA_Vox_stderr", daemon=True).start()
 
         def read_events():
             for line in self.process.stdout:
@@ -59,7 +69,7 @@ class IsolatedWhisperXProvider:
                 event = self.events.get(timeout=0.2)
             except queue.Empty:
                 if self.process.poll() is not None:
-                    raise RuntimeError("El proceso del motor terminó inesperadamente.")
+                    raise RuntimeError("El motor terminó. Diagnóstico: " + self._native_diagnostic())
                 continue
             kind = event.get("kind")
             if kind == "stage":
@@ -67,10 +77,17 @@ class IsolatedWhisperXProvider:
             elif kind in {"ok", "result"}:
                 return event.get("value")
             elif kind == "error":
-                raise RuntimeError("No se completó la operación del motor (" +
-                                   event.get("error_type", "Error") + ").")
+                raise RuntimeError("Motor " + event.get("error_type", "Error") + ": " +
+                                   event.get("message", "sin detalle") + " | " +
+                                   self._native_diagnostic())
             elif kind == "closed":
                 raise RuntimeError("El proceso del motor terminó inesperadamente.")
+
+    def _native_diagnostic(self):
+        raw = "\\n".join(self._stderr_tail)[-2500:]
+        raw = re.sub(r"hf_[a-zA-Z0-9_\\-]{12,}", "[CREDENCIAL]", raw)
+        raw = re.sub(r"(?i)(bearer\\s+)\\S+", r"\\1[CREDENCIAL]", raw)
+        return raw or "No hubo salida de diagnóstico nativo"
 
     def check_diarization(self):
         self._request({"action": "check"}, timeout=self.preparation_timeout)
@@ -92,3 +109,5 @@ class IsolatedWhisperXProvider:
                 self.process.wait(timeout=5)
         self.process.stdin.close()
         self.process.stdout.close()
+        if self.process.stderr:
+            self.process.stderr.close()
