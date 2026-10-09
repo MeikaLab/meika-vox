@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import json
 import os
-import re
-import traceback
-from collections import deque
 import queue
+import re
 import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 from ..speech_worker import PREFIX
@@ -69,7 +68,9 @@ class IsolatedWhisperXProvider:
                 event = self.events.get(timeout=0.2)
             except queue.Empty:
                 if self.process.poll() is not None:
-                    raise RuntimeError("El motor terminó. Diagnóstico: " + self._native_diagnostic())
+                    raise RuntimeError(
+                        "El motor terminó. Diagnóstico: " + self._native_diagnostic()
+                    )
                 continue
             kind = event.get("kind")
             if kind == "stage":
