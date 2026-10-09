@@ -166,3 +166,13 @@ def test_resume_index_cannot_assign_another_recording(tmp_path):
     result = batch.process_folder(folder, output, command, selected=[first], runner=runner)
     assert calls == [first]
     assert len(result["completed"]) == 1 and not result["skipped"]
+
+
+def test_readable_text_keeps_technical_ids_in_structured_files(tmp_path):
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"audio")
+    run = write_bundle(bundle_for(audio), tmp_path / "output")
+    text = (run / "transcript_normalized.txt").read_text()
+    assert "[00:00:00.000] Hablante 1:" in text
+    assert "SPEAKER_00" in (run / "speaker_turns.jsonl").read_text()
+    assert batch.complete_run(run)

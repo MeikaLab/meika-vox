@@ -26,6 +26,8 @@ whisperx = [
   "transformers>=4.48,<5",
 ]
 
+sherpa = ["sherpa-onnx>=1.10.28,<2"]
+
 [project.scripts]
 meika-vox = "meika_vox.cli:app"
 

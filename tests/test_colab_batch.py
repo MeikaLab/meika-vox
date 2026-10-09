@@ -142,3 +142,13 @@ def test_find_audio_folders_does_not_follow_external_or_cyclic_paths(tmp_path):
     assert report["folders"] == {}
     assert report["visited"] == 1
     assert not report["limited"]
+
+
+def test_resume_identity_distinguishes_speaker_engines_and_count():
+    base = ["meika-vox", "--project-id", "demo", "--model", "large-v3", "--diarize"]
+    pyannote = base + ["--diarization-backend", "pyannote"]
+    sherpa = base + ["--diarization-backend", "sherpa"]
+    exact = sherpa + ["--min-speakers", "2", "--max-speakers", "2"]
+    assert len({batch.configuration_key(c) for c in (base, pyannote, sherpa, exact)}) == 4
+    assert batch.configuration_key(sherpa + ["--batch-size", "1"]) == (
+        batch.configuration_key(sherpa + ["--batch-size", "4"]))
