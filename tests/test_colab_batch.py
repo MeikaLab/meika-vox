@@ -80,3 +80,24 @@ def test_valle_verde_hides_person_label_in_readable_name(tmp_path: Path) -> None
     assert batch._activity_label(second) == (
         "Sector_2__Valle_Verde__Mesa_sin_identificar__Parte_02"
     )
+
+
+def test_readable_copy_never_overwrites_same_activity_label(tmp_path: Path) -> None:
+    folder = tmp_path / "02 - Sector 2" / "01 - Taller 1 Valle Verde"
+    folder.mkdir(parents=True)
+    first = folder / "Grabador A.m4a"
+    second = folder / "Grabador B.m4a"
+    first.write_bytes(b"audio primera entrevista")
+    second.write_bytes(b"audio segunda entrevista")
+    run_a = tmp_path / "run_a"
+    run_b = tmp_path / "run_b"
+    run_a.mkdir()
+    run_b.mkdir()
+    (run_a / "transcript_normalized.txt").write_text("Texto A", encoding="utf-8")
+    (run_b / "transcript_normalized.txt").write_text("Texto B", encoding="utf-8")
+    output = tmp_path / "resultados"
+    text_a = batch.readable_copy(first, run_a, output, batch.fingerprint(first))
+    text_b = batch.readable_copy(second, run_b, output, batch.fingerprint(second))
+    assert text_a != text_b
+    assert text_a.read_text(encoding="utf-8") == "Texto A"
+    assert text_b.read_text(encoding="utf-8") == "Texto B"
