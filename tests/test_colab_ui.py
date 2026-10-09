@@ -181,3 +181,34 @@ def test_folder_selection_trailing_spaces_nested_audio_and_empty_folder(tmp_path
     panel["open_path"].click()
     assert len(panel["recordings"].value) == 1
     assert panel["state"]["folder"] == recordings
+
+
+def test_find_and_choose_folder_with_audio(tmp_path, monkeypatch):
+    import IPython.display
+
+    import meika_vox.runtime
+
+    monkeypatch.setattr(IPython.display, "display", lambda *args: None)
+    monkeypatch.setattr(meika_vox.runtime, "inspect_runtime",
+                        lambda: SimpleNamespace(asr_ready=True, cuda_available=True))
+    recording = tmp_path / "Trabajo" / "Audios "
+    recording.mkdir(parents=True)
+    (recording / "entrevista.wav").write_bytes(b"recording")
+    (tmp_path / "audio_suelto.m4a").write_bytes(b"root")
+    panel = ui.build_panel(ROOT, tmp_path)
+    panel["find"].click()
+    deadline = time.monotonic() + 10
+    while panel["state"]["finding"] and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert not panel["state"]["finding"]
+    assert "Búsqueda finalizada" in panel["search_status"].value
+    results = dict(panel["found_folders"].options)
+    assert str(recording) in results.values()
+    panel["found_folders"].value = str(recording)
+    assert panel["state"]["folder"] == recording
+    assert len(panel["recordings"].value) == 1
+    assert not panel["start"].disabled
+    panel["found_folders"].value = str(tmp_path)
+    assert len(panel["recordings"].value) == 1  # Direct root audio only, not nested recordings.
+    assert panel["recordings"].value == (str(tmp_path / "audio_suelto.m4a"),)
+    assert not panel["start"].disabled
