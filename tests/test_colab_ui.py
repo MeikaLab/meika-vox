@@ -50,12 +50,21 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
     panel = ui.build_panel(ROOT, tmp_path)
     # Opening the panel must not scan My Drive or select any audio automatically.
     assert panel["recordings"].options == ()
+    assert panel["state"]["step"] == 1
+    assert panel["steps"][1].layout.display == "none"
     panel["scan"].click()
     assert panel["recordings"].options == ()  # Root is rejected.
     panel["folder"].value = "Entrevistas"
     panel["scan"].click()
     assert len(panel["recordings"].value) == 1
+    assert panel["state"]["step"] == 2
+    assert panel["steps"][0].layout.display == "none"
     assert panel["start"].disabled  # No silent CPU fallback.
+    assert "GPU" in panel["start_help"].value
+    panel["choices"].children[0].value = False
+    assert not panel["recordings"].value
+    assert "al menos un audio" in panel["start_help"].value
+    panel["choices"].children[0].value = True
     panel["cpu_consent"].value = True
     assert not panel["start"].disabled
     panel["start"].click()
@@ -63,6 +72,9 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
     while panel["state"]["busy"] and time.monotonic() < deadline:
         time.sleep(0.01)
     assert not panel["state"]["busy"]
+    assert panel["state"]["step"] == 3
+    assert panel["steps"][1].layout.display == "none"
+    assert panel["download"].layout.display == ""
     archive = panel["state"]["archive"]
     assert archive is not None and archive.is_file()
     assert panel["retry"].disabled
@@ -87,3 +99,17 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
         time.sleep(0.01)
     assert panel["state"]["archive"] is None
     assert not panel["retry"].disabled
+
+    assert panel["download"].layout.display == "none"
+    assert panel["retry"].layout.display == ""
+    assert "Pendientes:" in panel["summary"].value
+    assert any("Synthetic failure" in item.get("text", "")
+               for item in panel["details"].outputs)
+    panel["again"].click()
+    assert panel["state"]["step"] == 2
+    # Changing recursion must not erase the folder navigator.
+    panel["folder"].value = ""
+    panel["scan"].click()
+    existing_folders = panel["folders"].options
+    panel["recursive"].value = False
+    assert panel["folders"].options == existing_folders

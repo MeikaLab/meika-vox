@@ -61,10 +61,19 @@ def build_panel(repo: Path, root: Path) -> dict:
     folders = w.Dropdown(description="Subcarpeta:", options=[])
     up = w.Button(description="Subir un nivel")
     enter = w.Button(description="Entrar")
-    scan = w.Button(description="Buscar audios aquí", button_style="info")
+    scan = w.Button(description="Usar esta carpeta", button_style="info")
     recursive = w.Checkbox(value=True, description="Incluir subcarpetas")
     recordings = w.SelectMultiple(options=[], description="Audios:", rows=7)
-    selection_help = w.HTML("Se seleccionarán todos; Ctrl/Cmd permite elegir varios.")
+    choices = w.VBox()
+    selection = w.Accordion(children=[choices])
+    selection.set_title(0, "Elegir algunos audios (opcional)")
+    selection.selected_index = None
+    recordings.layout.display = "none"
+    selection_help = w.HTML()
+    location = w.HTML()
+    start_help = w.HTML()
+    back = w.Button(description="Cambiar carpeta")
+    again = w.Button(description="Volver a las opciones")
     count = w.HTML("Elige una carpeta específica para buscar grabaciones.")
     gpu = runtime.cuda_available
     cpu_consent = w.Checkbox(value=False, description="Continuar sin GPU con modelo small")
@@ -95,10 +104,11 @@ def build_panel(repo: Path, root: Path) -> dict:
         "<b>pyannote:</b> conectado actualmente; calidad pendiente de validar en tus audios.<br>"
         "<b>Nemotron y Sherpa-ONNX:</b> candidatos para comparar; no disponibles en este panel. "
         "No se ha demostrado que mejoren la calidad ni simplifiquen la configuración.")
-    advanced = w.Accordion(children=[w.VBox([glossary_input, force, alternatives])])
-    advanced.set_title(0, "Más opciones y alternativas")
+    advanced = w.Accordion(children=[w.VBox([language, recursive, diarize, speaker_help,
+                                            speaker_setup, glossary_input, force, alternatives])])
+    advanced.set_title(0, "Opciones adicionales")
     advanced.selected_index = None
-    start = w.Button(description="Transcribir seleccionados", button_style="info", disabled=True)
+    start = w.Button(description="Comenzar transcripción", button_style="info", disabled=True)
     stop = w.Button(description="Detener después de este audio", disabled=True)
     progress = w.IntProgress(min=0, max=1, value=0, description="Lote:")
     current_audio = w.HTML()
@@ -116,11 +126,10 @@ def build_panel(repo: Path, root: Path) -> dict:
     stop_event = threading.Event()
     done_event = threading.Event()
     controls = [project_input, language, folder, folders, up, enter, scan, recursive,
-                recordings, cpu_consent, diarize, check, glossary_input, force]
+                recordings, cpu_consent, diarize, check, glossary_input, force, back, again]
 
     def note(message):
-        with details:
-            print(message)
+        details.append_stdout(re.sub(r"hf_[A-Za-z0-9]+", "[clave oculta]", str(message)) + "\n")
 
     def safe_folder(value):
         path = (root / value.strip()).resolve()
@@ -130,9 +139,35 @@ def build_panel(repo: Path, root: Path) -> dict:
             raise ValueError("Elige la carpeta de grabaciones, no la de resultados.")
         return path
 
+    def show_step(number):
+        for index, step in enumerate(steps, 1):
+            step.layout.display = "" if index == number else "none"
+        state["step"] = number
+
     def ready(*_):
-        start.disabled = (state["busy"] or not recordings.value
-                          or (not gpu and not cpu_consent.value))
+        reason = ""
+        if not recordings.value:
+            reason = "Selecciona al menos un audio."
+        elif not project_input.value.strip():
+            reason = "Escribe un nombre para guardar el proyecto."
+        elif not gpu and not cpu_consent.value:
+            reason = "Activa una GPU o marca Continuar sin GPU para comenzar."
+        start.disabled = state["busy"] or bool(reason)
+        start_help.value = escape(reason)
+        selection_help.value = f"<b>{len(recordings.value)} audios seleccionados.</b>"
+
+    def choose(_):
+        recordings.value = tuple(box.audio_path for box in choices.children if box.value)
+
+    def make_choices(found, path):
+        boxes = []
+        for audio in found:
+            box = w.Checkbox(value=True, description=str(audio.relative_to(path)),
+                             indent=False, layout=w.Layout(width="95%"))
+            box.audio_path = str(audio)
+            box.observe(choose, names="value")
+            boxes.append(box)
+        choices.children = tuple(boxes)
 
     def browse(path):
         state["folder"] = path
@@ -144,7 +179,10 @@ def build_panel(repo: Path, root: Path) -> dict:
         folders.options = [(p.name, str(p)) for p in children]
         recordings.options = []
         state["selected_folder"] = None
-        count.value = "Pulsa Buscar audios aquí cuando llegues a la carpeta deseada."
+        location.value = f"<b>Carpeta actual:</b> Mi unidad / {escape(folder.value)}"
+        count.value = "Entra en la carpeta de tus grabaciones y pulsa Usar esta carpeta."
+        up.disabled = path == root
+        enter.disabled = not children
         ready()
 
     def navigate(button):
@@ -169,6 +207,9 @@ def build_panel(repo: Path, root: Path) -> dict:
             recordings.options = [(str(p.relative_to(path)), str(p)) for p in found]
             recordings.value = tuple(str(p) for p in found)
             state["selected_folder"] = path
+            make_choices(found, path)
+            if found:
+                show_step(2)
             count.value = f"<b>{len(found)} grabaciones encontradas.</b>"
             if not found:
                 count.value += " Revisa la carpeta o activa Incluir subcarpetas."
@@ -179,11 +220,11 @@ def build_panel(repo: Path, root: Path) -> dict:
 
     def invalidate(_):
         recordings.options = []
-        folders.options = []
         state["selected_folder"] = None
         state["failed"] = []
         retry.disabled = True
-        count.value = "La carpeta cambió. Pulsa Buscar audios aquí."
+        count.value = "La selección cambió. Pulsa Usar esta carpeta para actualizar los audios."
+        show_step(1)
         ready()
 
     def secret():
@@ -222,6 +263,8 @@ def build_panel(repo: Path, root: Path) -> dict:
                     "folder": folder.value, "diarize": diarize.value,
                     "force": force.value, "glossary": glossary_input.value.strip()}
         token = secret() if settings["diarize"] or access_only else None
+        if access_only:
+            speaker_status.value = "Comprobando acceso; la primera descarga puede tardar…"
         state["busy"] = True
         state["since"] = time.monotonic()
         done_event.clear()
@@ -229,7 +272,11 @@ def build_panel(repo: Path, root: Path) -> dict:
         for control in controls:
             control.disabled = True
         start.disabled = retry.disabled = download.disabled = True
+        if not access_only:
+            show_step(3)
         stop.disabled = access_only
+        stop.layout.display = "none" if access_only else ""
+        retry.layout.display = download.layout.display = again.layout.display = "none"
         progress.value = 0
         progress.bar_style = ""
         results.value = summary.value = current_audio.value = ""
@@ -323,6 +370,11 @@ def build_panel(repo: Path, root: Path) -> dict:
                              for i in report[key])
                 update_stage("Lote finalizado con pendientes" if has_pending else "Lote finalizado")
                 summary.value += f" · {report['pending']} sin procesar · {warned} con observaciones"
+                if has_pending:
+                    pending_names = ", ".join(p.name for p in state["failed"][:5])
+                    summary.value += (f"<br><b>Pendientes:</b> {escape(pending_names)}. "
+                                      "Pulsa Reintentar pendientes. Si vuelve a fallar, "
+                                      "abre Detalles técnicos para ver el error de cada audio.")
                 relative = output.relative_to(root)
                 results.value = (
                     f"<b>Resultados:</b> Mi unidad / {escape(str(relative))} / Lectura<br>"
@@ -339,6 +391,13 @@ def build_panel(repo: Path, root: Path) -> dict:
                            else "No se completó. Revisa carpeta, memoria o conexión "
                            "a Drive y reintenta.")
                 update_stage(message)
+                if access_only:
+                    speaker_status.value = escape(message)
+                if isinstance(exc, (ValueError, FileNotFoundError)):
+                    update_stage("Revisa el nombre del proyecto, la carpeta y el glosario. "
+                                 "Vuelve a las opciones para corregirlos.")
+                elif isinstance(exc, PermissionError):
+                    update_stage("Drive no permite guardar. Reconecta Drive y reintenta.")
                 # No upstream exception text or tokens enter shared notebook output.
                 note(f"Tipo de error: {type(exc).__name__}")
             finally:
@@ -357,8 +416,16 @@ def build_panel(repo: Path, root: Path) -> dict:
                 stop.disabled = True
                 retry.disabled = not state["failed"]
                 download.disabled = state["archive"] is None
+                stop.layout.display = "none"
+                retry.layout.display = "" if state["failed"] else "none"
+                download.layout.display = "" if state["archive"] else "none"
+                again.layout.display = ""
+                for box in choices.children:
+                    box.disabled = False
                 ready()
 
+        for box in choices.children:
+            box.disabled = True
         threading.Thread(target=heartbeat, daemon=True).start()
         threading.Thread(target=work, name="MEIKA_Vox_batch", daemon=True).start()
 
@@ -385,6 +452,9 @@ def build_panel(repo: Path, root: Path) -> dict:
     recursive.observe(invalidate, names="value")
     recordings.observe(ready, names="value")
     cpu_consent.observe(ready, names="value")
+    project_input.observe(ready, names="value")
+    back.on_click(lambda _: show_step(1))
+    again.on_click(lambda _: show_step(2))
     check.on_click(lambda _: launch([], access_only=True))
     start.on_click(start_batch)
     stop.on_click(stop_after)
@@ -392,19 +462,30 @@ def build_panel(repo: Path, root: Path) -> dict:
     download.on_click(download_texts)
     for item in (project_input, folder, recordings, progress, stage, summary, results):
         item.layout.width = "95%"
+    manual = w.Accordion(children=[w.VBox([folder])])
+    manual.set_title(0, "Escribir una ruta (opcional)")
+    manual.selected_index = None
+    steps = [
+        w.VBox([w.HTML("<h3>1 · Elige la carpeta de tus audios</h3>"),
+                location, folders, w.HBox([up, enter]), manual, scan, count]),
+        w.VBox([w.HTML("<h3>2 · Comienza la transcripción</h3>"),
+                selection_help, selection, recordings, project_input, motor, cpu_consent,
+                advanced, start_help, start, back]),
+        w.VBox([w.HTML("<h3>3 · Tu transcripción</h3>"),
+                progress, current_audio, stage, summary, stop, results,
+                download, retry, again, logs]),
+    ]
+    for button in (scan, start, stop, download, retry, again, check, back):
+        button.layout.width = "auto"
+        button.layout.min_width = "180px"
     display(w.VBox([
         w.HTML("<div style='background:#f1f7f6;padding:16px;border-radius:10px;color:#1a4146'>"
-               "<h2>MEIKA Vox</h2>Transcripción para investigación social y territorial</div>"),
-        motor, cpu_consent, w.HTML("<h3>1 · Elegir grabaciones</h3>"),
-        project_input, folder, folders, w.HBox([up, enter]), recursive, scan,
-        count, recordings, selection_help, language,
-        w.HTML("<h3>2 · Transcribir</h3>"), diarize, speaker_help, speaker_setup, advanced,
-        w.HBox([start, stop]), progress, current_audio, stage, summary,
-        w.HTML("<h3>3 · Mis resultados</h3>"), results, w.HBox([download, retry]), logs,
-        w.HTML("Colab gratuito tiene GPU y duración variables. Si se desconecta, ejecuta todo "
-               "de nuevo, elige el mismo proyecto y continúa: se omiten resultados completos "
-               "con el mismo audio y configuración. El audio en curso puede tener que repetirse."),
+               "<h2>MEIKA Vox</h2>Transcribe tus grabaciones y guarda los textos en Drive.</div>"),
+        *steps,
+        w.HTML("Si Colab se desconecta, abre de nuevo el panel y elige el mismo proyecto. "
+               "Los audios ya guardados se conservan."),
     ]))
+    show_step(1)
     try:
         browse(safe_folder(saved.get("folder", "")))
     except (OSError, ValueError):
@@ -412,4 +493,6 @@ def build_panel(repo: Path, root: Path) -> dict:
     return {"project": project_input, "folder": folder, "folders": folders, "scan": scan,
             "recordings": recordings, "cpu_consent": cpu_consent, "start": start,
             "retry": retry, "state": state, "summary": summary, "stage": stage,
-            "done": done_event}
+            "done": done_event, "steps": steps, "choices": choices,
+            "start_help": start_help, "download": download, "again": again,
+            "recursive": recursive, "details": details}

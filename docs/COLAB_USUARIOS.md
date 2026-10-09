@@ -3,9 +3,9 @@
 1. Abre el [cuaderno público](https://colab.research.google.com/github/MeikaLab/meika-vox/blob/main/notebooks/MEIKA_Vox_Colab.ipynb).
 2. Selecciona GPU en **Entorno de ejecución → Cambiar tipo de entorno de ejecución**, si está disponible.
 3. Pulsa ▶ en **Preparar y abrir MEIKA Vox**, justo debajo de las instrucciones. Espera y autoriza Drive; el panel aparece en esa misma celda, sin bajar al final.
-4. En el panel navega hasta una carpeta concreta o escribe su ruta desde Mi unidad. Pulsa **Buscar audios aquí**. Todos quedan seleccionados; Ctrl/Cmd permite cambiar la selección.
-5. Escribe el proyecto, confirma idioma y pulsa **Transcribir seleccionados**.
-6. Al terminar, descarga el ZIP o busca el proyecto en Drive. Los TXT están en `MEIKA_Vox/Proyectos/<proyecto>/Transcripciones/Lectura`.
+4. En el primer paso entra a la carpeta de tus grabaciones y pulsa **Usar esta carpeta**. La ruta manual queda en una opción desplegable.
+5. En el segundo paso escribe el proyecto y pulsa **Comenzar transcripción**. Se incluyen todos los audios; puedes desmarcar archivos en **Elegir algunos audios**. El idioma por defecto es español. Idioma, voces y glosario están en **Opciones adicionales**.
+6. El tercer paso muestra el audio actual, la etapa y el balance. Al terminar aparecen la descarga del ZIP y, si hace falta, **Reintentar pendientes**. Puedes volver a las opciones para corregir la configuración. Los TXT están en `MEIKA_Vox/Proyectos/<proyecto>/Transcripciones/Lectura`.
 
 El enlace del panel busca el nombre del proyecto en Drive; no es un enlace directo a una carpeta determinada. El navegador de esta versión trabaja dentro de **Mi unidad**. Las unidades compartidas y los enlaces arbitrarios de carpetas no están implementados.
 
