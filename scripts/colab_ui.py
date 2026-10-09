@@ -101,6 +101,7 @@ def build_panel(repo: Path, root: Path) -> dict:
     start = w.Button(description="Transcribir seleccionados", button_style="info", disabled=True)
     stop = w.Button(description="Detener después de este audio", disabled=True)
     progress = w.IntProgress(min=0, max=1, value=0, description="Lote:")
+    current_audio = w.HTML()
     stage = w.HTML("Esperando selección.")
     summary = w.HTML()
     results = w.HTML()
@@ -196,7 +197,8 @@ def build_panel(repo: Path, root: Path) -> dict:
     def heartbeat():
         while not done_event.wait(1):
             elapsed = int(time.monotonic() - state["since"])
-            stage.value = f"{escape(state['stage'])} · {elapsed // 60:02d}:{elapsed % 60:02d}"
+            stage.value = (f"{escape(state['stage'])} · Tiempo del lote: "
+                           f"{elapsed // 60:02d}:{elapsed % 60:02d}")
 
     def update_stage(message):
         state["stage"] = message
@@ -230,7 +232,7 @@ def build_panel(repo: Path, root: Path) -> dict:
         stop.disabled = access_only
         progress.value = 0
         progress.bar_style = ""
-        results.value = summary.value = ""
+        results.value = summary.value = current_audio.value = ""
         state["archive"] = None
         state["failed"] = []
 
@@ -299,6 +301,8 @@ def build_panel(repo: Path, root: Path) -> dict:
                                      f"{info['skipped']} ya existentes "
                                      f"· {info['failed']} con error")
                     if info["event"] == "started":
+                        current_audio.value = (f"Audio {info['index']} de {info['total']}: "
+                                               f"<b>{escape(info['audio'])}</b>")
                         update_stage(f"Audio {info['index']} de {info['total']}: {info['audio']}")
 
                 report = batch.process_folder(
@@ -395,7 +399,7 @@ def build_panel(repo: Path, root: Path) -> dict:
         project_input, folder, folders, w.HBox([up, enter]), recursive, scan,
         count, recordings, selection_help, language,
         w.HTML("<h3>2 · Transcribir</h3>"), diarize, speaker_help, speaker_setup, advanced,
-        w.HBox([start, stop]), progress, stage, summary,
+        w.HBox([start, stop]), progress, current_audio, stage, summary,
         w.HTML("<h3>3 · Mis resultados</h3>"), results, w.HBox([download, retry]), logs,
         w.HTML("Colab gratuito tiene GPU y duración variables. Si se desconecta, ejecuta todo "
                "de nuevo, elige el mismo proyecto y continúa: se omiten resultados completos "
