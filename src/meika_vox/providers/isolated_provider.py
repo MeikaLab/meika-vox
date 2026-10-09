@@ -63,7 +63,7 @@ class IsolatedWhisperXProvider:
         while True:
             if deadline is not None and time.monotonic() >= deadline:
                 self.process.terminate()
-                raise TimeoutError("El motor no informó cambios de etapa dentro del tiempo permitido.")
+                raise TimeoutError("El motor no informó cambios de etapa dentro del límite.")
             try:
                 event = self.events.get(timeout=0.2)
             except queue.Empty:
