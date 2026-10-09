@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import time
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -50,15 +51,14 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
     panel = ui.build_panel(ROOT, tmp_path)
     # Opening the panel must not scan My Drive or select any audio automatically.
     assert panel["recordings"].options == ()
-    assert panel["state"]["step"] == 1
-    assert panel["steps"][1].layout.display == "none"
+    assert panel["activity"].layout.display == "none"
     panel["scan"].click()
     assert panel["recordings"].options == ()  # Root is rejected.
-    panel["folder"].value = "Entrevistas"
-    panel["scan"].click()
+    panel["folders"].value = str(folder)
+    assert panel["folder"].value == "Entrevistas"
+    assert panel["project"].value == "Entrevistas"
     assert len(panel["recordings"].value) == 1
-    assert panel["state"]["step"] == 2
-    assert panel["steps"][0].layout.display == "none"
+    assert panel["activity"].layout.display == "none"
     assert panel["start"].disabled  # No silent CPU fallback.
     assert "GPU" in panel["start_help"].value
     panel["choices"].children[0].value = False
@@ -72,11 +72,14 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
     while panel["state"]["busy"] and time.monotonic() < deadline:
         time.sleep(0.01)
     assert not panel["state"]["busy"]
-    assert panel["state"]["step"] == 3
-    assert panel["steps"][1].layout.display == "none"
+    assert panel["activity"].layout.display == ""
+    assert "Hola" in panel["preview"].value
     assert panel["download"].layout.display == ""
     archive = panel["state"]["archive"]
     assert archive is not None and archive.is_file()
+    with zipfile.ZipFile(archive) as texts:
+        assert len(texts.namelist()) == 1
+        assert "Hola" in texts.read(texts.namelist()[0]).decode("utf-8")
     assert panel["retry"].disabled
     assert "1 guardados" in panel["summary"].value
     assert not panel["start"].disabled
@@ -105,11 +108,58 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
     assert "Pendientes:" in panel["summary"].value
     assert any("Synthetic failure" in item.get("text", "")
                for item in panel["details"].outputs)
-    panel["again"].click()
-    assert panel["state"]["step"] == 2
+    panel["up"].click()
+    assert panel["folder"].value == ""
     # Changing recursion must not erase the folder navigator.
     panel["folder"].value = ""
     panel["scan"].click()
     existing_folders = panel["folders"].options
     panel["recursive"].value = False
     assert panel["folders"].options == existing_folders
+
+
+def test_folder_selection_trailing_spaces_nested_audio_and_empty_folder(tmp_path, monkeypatch):
+    import IPython.display
+
+    import meika_vox.runtime
+
+    monkeypatch.setattr(IPython.display, "display", lambda *args: None)
+    monkeypatch.setattr(meika_vox.runtime, "inspect_runtime",
+                        lambda: SimpleNamespace(asr_ready=True, cuda_available=True))
+    recordings = tmp_path / "Audios para transcribir "
+    nested = recordings / "Reunión vecinal"
+    nested.mkdir(parents=True)
+    (nested / "grabacion.MP4").write_bytes(b"video-with-audio")
+    (recordings / "entrevista.m4a").write_bytes(b"audio")
+    empty = tmp_path / "Documentos"
+    empty.mkdir()
+    (empty / "minuta.pdf").write_bytes(b"not-audio")
+    panel = ui.build_panel(ROOT, tmp_path)
+    # Selecting the visible folder must immediately enter it and find nested media.
+    panel["folders"].value = str(recordings)
+    assert panel["folder"].value == "Audios para transcribir "
+    assert panel["state"]["folder"] == recordings
+    assert len(panel["recordings"].value) == 2
+    assert "2 audios" in panel["count"].value
+    assert panel["start"].description == "Transcribir 2 audios"
+    assert not panel["start"].disabled
+    panel["recursive"].value = False
+    assert len(panel["recordings"].value) == 1
+    assert panel["folders"].options[-1][1] == str(nested)
+    panel["folders"].value = str(nested)
+    assert len(panel["recordings"].value) == 1
+    assert panel["folder"].value.endswith("Reunión vecinal")
+    panel["up"].click()
+    assert panel["state"]["folder"] == recordings
+    panel["up"].click()
+    assert panel["state"]["folder"] == tmp_path
+    panel["folders"].value = str(empty)
+    assert not panel["recordings"].value
+    assert panel["start"].disabled
+    assert "minuta.pdf" in panel["count"].value
+    assert "No encontré audios" in panel["count"].value
+    # A manual path uses the same navigation and preserves exact folder names.
+    panel["folder"].value = "Audios para transcribir "
+    panel["open_path"].click()
+    assert len(panel["recordings"].value) == 1
+    assert panel["state"]["folder"] == recordings

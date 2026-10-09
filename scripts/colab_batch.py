@@ -22,6 +22,10 @@ AUDIO_EXTENSIONS = {
     ".wma",
     ".aiff",
     ".aif",
+    ".mp4",
+    ".webm",
+    ".3gp",
+    ".mkv",
 }
 REQUIRED_OUTPUTS = (
     "transcript_normalized.txt",
@@ -33,13 +37,15 @@ REQUIRED_OUTPUTS = (
 )
 
 
-def discover_audio(root: Path, *, exclude: Path | None = None) -> list[Path]:
+def discover_audio(
+    root: Path, *, exclude: Path | None = None, recursive: bool = True,
+) -> list[Path]:
     """Discover audio recursively without following paths outside the selected folder."""
     root = root.resolve()
     excluded = exclude.resolve() if exclude else None
     return sorted(
         p
-        for p in root.rglob("*")
+        for p in (root.rglob("*") if recursive else root.iterdir())
         if p.is_file()
         and p.suffix.lower() in AUDIO_EXTENSIONS
         and p.resolve().is_relative_to(root)
