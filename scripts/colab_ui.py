@@ -249,8 +249,8 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         path = path.resolve()
         if not path.is_relative_to(root) or not path.is_dir():
             raise ValueError("El destino debe ser una carpeta existente de Mi unidad.")
-        if path.is_relative_to(output_root):
-            raise ValueError("No elijas una carpeta técnica de resultados como base.")
+        if path != output_root and path.is_relative_to(output_root):
+            raise ValueError("No elijas una subcarpeta técnica como destino.")
         state["destination_browse"] = path
         child_folders = sorted(
             (p for p in path.iterdir() if p.is_dir()
@@ -342,8 +342,9 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         start.disabled = state["busy"] or state["finding"] or bool(reason)
         start_help.value = escape(reason)
         selected_count = len(recordings.value)
-        start.description = (f"Transcribir {selected_count} audios"
-                             if selected_count else "Transcribir")
+        if not state["busy"]:
+            start.description = (f"Transcribir {selected_count} audios"
+                                 if selected_count else "Transcribir")
         selection_help.value = ""
         selection.layout.display = "" if state["audio_candidates"] else "none"
         if state["finding"]:
@@ -1034,7 +1035,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         last_output = Path(saved.get("output_base", str(output_root))).resolve()
         browse_destination(last_output if last_output.is_dir()
                            and last_output.is_relative_to(root)
-                           and not last_output.is_relative_to(output_root)
+                           and (last_output == output_root or not last_output.is_relative_to(output_root))
                            else root)
         destination_select(None)
     except (OSError, ValueError):
