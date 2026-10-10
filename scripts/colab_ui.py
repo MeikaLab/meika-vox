@@ -103,7 +103,6 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     # Select an existing Drive folder as the parent of the project directory.
     # Results always follow <chosen>/<project>/Transcripciones, preserving
     # project-scoped resume hashes and technical exports.
-    destination_current = root
     destination_options = w.Dropdown(description="Abrir en Drive:",
                                       options=[("Elige carpeta…", "")])
     destination_enter = w.Button(description="Abrir carpeta")
@@ -1035,7 +1034,8 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         last_output = Path(saved.get("output_base", str(output_root))).resolve()
         browse_destination(last_output if last_output.is_dir()
                            and last_output.is_relative_to(root)
-                           and (last_output == output_root or not last_output.is_relative_to(output_root))
+                           and (last_output == output_root
+                                or not last_output.is_relative_to(output_root))
                            else root)
         destination_select(None)
     except (OSError, ValueError):
