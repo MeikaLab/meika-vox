@@ -102,15 +102,20 @@ class WhisperXProvider:
         # Disable optional usage reporting before the speech engines create sessions.
         os.environ["PYANNOTE_METRICS_ENABLED"] = "0"
         try:
-            import onnxruntime
             import torch
             import whisperx
-
-            onnxruntime.disable_telemetry_events()
         except ImportError as exc:
             raise RuntimeError(
-                'WhisperX is not installed. Run: pip install -e ".[whisperx]"'
+                f"No se pudo importar WhisperX: {type(exc).__name__}: {exc}"
             ) from exc
+
+        # ONNX Runtime is optional for plain ASR; its failure must not block WhisperX.
+        try:
+            import onnxruntime
+
+            onnxruntime.disable_telemetry_events()
+        except (ImportError, AttributeError, RuntimeError):
+            pass
 
         device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
         compute_type = self.compute_type or ("float16" if device == "cuda" else "int8")
