@@ -332,6 +332,7 @@ def process_folder(
     on_progress: Callable[[dict], None] | None = None,
     selected: list[Path] | None = None,
     runner: Callable[[Path, Path], Path] | None = None,
+    runner_with_checksum: Callable[[Path, Path, str], Path] | None = None,
     should_stop: Callable[[], bool] | None = None,
 ) -> dict:
     """Persist successful results after each file; retry failures on the next invocation."""
@@ -357,6 +358,22 @@ def process_folder(
         state = {}
     settings = configuration_key(command, configuration)
     report = {"completed": [], "skipped": [], "failed": []}
+    # Scan archived manifests once per batch instead of traversing the whole
+    # Drive output tree for every recording after an interrupted cache write.
+    recovery_index: dict[tuple[str, str], list[Path]] | None = None
+
+    def recovery_candidates() -> dict[tuple[str, str], list[Path]]:
+        nonlocal recovery_index
+        if recovery_index is None:
+            recovery_index = {}
+            for path in output.rglob("manifest.json"):
+                try:
+                    info = json.loads(path.read_text(encoding="utf-8"))
+                    key = (info["batch_settings"], info["asset"]["checksum_sha256"])
+                    recovery_index.setdefault(key, []).append(path.parent)
+                except (OSError, ValueError, KeyError, TypeError):
+                    continue
+        return recovery_index
 
     def notify(event: str, index: int, audio: Path | None = None) -> None:
         if on_progress is not None:
@@ -440,18 +457,14 @@ def process_folder(
             # Recover a validated result whose cache update was interrupted.
             recovered = None
             if not force:
-                for path in output.rglob("manifest.json"):
-                    try:
-                        info = json.loads(path.read_text(encoding="utf-8"))
-                        if (info.get("batch_settings") == settings
-                                and info["asset"]["checksum_sha256"] == checksum
-                                and complete_run(path.parent)):
-                            recovered = path.parent
-                            break
-                    except (OSError, ValueError, KeyError, TypeError):
-                        continue
+                for candidate in recovery_candidates().get((settings, checksum), []):
+                    if complete_run(candidate):
+                        recovered = candidate
+                        break
             if recovered is not None:
                 run = recovered
+            elif runner_with_checksum is not None:
+                run = runner_with_checksum(audio, output, checksum)
             elif runner is not None:
                 run = runner(audio, output)
             else:
@@ -481,6 +494,10 @@ def process_folder(
                                     encoding="utf-8")
             manifest_tmp.replace(manifest_path)
             state[key] = str(run.resolve())
+            if recovery_index is not None:
+                runs = recovery_index.setdefault((settings, checksum), [])
+                if run not in runs:
+                    runs.append(run)
             temporary = state_path.with_suffix(".tmp")
             temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2))
             temporary.replace(state_path)
