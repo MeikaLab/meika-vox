@@ -152,3 +152,65 @@ def test_resume_identity_distinguishes_speaker_engines_and_count():
     assert len({batch.configuration_key(c) for c in (base, pyannote, sherpa, exact)}) == 4
     assert batch.configuration_key(sherpa + ["--batch-size", "1"]) == (
         batch.configuration_key(sherpa + ["--batch-size", "4"]))
+
+
+def test_checksum_aware_runner_receives_source_hash(tmp_path: Path, monkeypatch) -> None:
+    folder = tmp_path / "source"
+    folder.mkdir()
+    audio = folder / "one.wav"
+    audio.write_bytes(b"sample")
+    seen = []
+
+    def fake_complete(run):
+        return (run / "manifest.json").is_file()
+
+    def fake_runner(path, output, checksum):
+        seen.append((path, checksum))
+        run = output / "asset" / "run"
+        run.mkdir(parents=True)
+        (run / "manifest.json").write_text(
+            __import__("json").dumps({
+                "asset": {"checksum_sha256": checksum},
+                "run": {"status": "COMPLETED"},
+            })
+        )
+        (run / "transcript_normalized.txt").write_text("Hola")
+        return run
+
+    monkeypatch.setattr(batch, "complete_run", fake_complete)
+    reports = batch.process_folder(
+        folder, tmp_path / "results",
+        ["meika-vox", "--project-id", "demo", "--model", "small"],
+        selected=[audio], runner_with_checksum=fake_runner,
+    )
+    assert not reports["failed"]
+    assert reports["completed"]
+    assert seen == [(audio, batch.fingerprint(audio))]
+
+
+def test_recovery_indexes_manifests_only_once_per_batch(tmp_path: Path, monkeypatch) -> None:
+    folder = tmp_path / "input"
+    folder.mkdir()
+    for name in ("a.wav", "b.wav"):
+        (folder / name).write_bytes(name.encode())
+    output = tmp_path / "output"
+    output.mkdir()
+    original_rglob = type(output).rglob
+    scans = []
+
+    def counting_rglob(path, pattern):
+        if path == output and pattern == "manifest.json":
+            scans.append(pattern)
+        return original_rglob(path, pattern)
+
+    monkeypatch.setattr(type(output), "rglob", counting_rglob)
+    def fail_runner(*_):
+        raise RuntimeError("test failure")
+
+    report = batch.process_folder(
+        folder, output,
+        ["meika-vox", "--project-id", "demo", "--model", "small"],
+        runner_with_checksum=fail_runner,
+    )
+    assert len(report["failed"]) == 2
+    assert scans == ["manifest.json"]
