@@ -74,15 +74,47 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     search_status = w.HTML()
     search_stop = threading.Event()
     recursive = w.Checkbox(value=True, description="Incluir subcarpetas")
+    # Multi-folder basket: a click explicitly includes a recording; never process
+    # everything by default. A page contains at most 40 checkbox widgets.
     recordings = w.SelectMultiple(options=[], description="Audios:", rows=7)
+    recordings.layout.display = "none"  # Internal shared selection for batch callers.
+    audio_filter = w.Text(description="Filtrar audios:", placeholder="Buscar por nombre o carpeta")
+    select_visible = w.Button(description="Seleccionar los visibles")
+    deselect_visible = w.Button(description="Quitar los visibles")
+    page_previous = w.Button(description="← Anteriores")
+    page_next = w.Button(description="Siguientes →")
+    page_status = w.HTML()
     choices = w.VBox()
-    selection = w.Accordion(children=[choices])
-    selection.set_title(0, "Elegir algunos audios (opcional)")
-    selection.selected_index = None
-    recordings.layout.display = "none"
+    selection = w.VBox([
+        audio_filter, w.HBox([select_visible, deselect_visible]),
+        w.HBox([page_previous, page_status, page_next]), choices,
+    ])
+    selection.layout.display = "none"
+    basket = w.SelectMultiple(options=[], description="Elegidos:", rows=5,
+                              layout=w.Layout(width="95%"))
+    remove_from_basket = w.Button(description="Quitar marcados del lote")
+    clear_basket = w.Button(description="Vaciar selección")
+    basket_summary = w.HTML("0 audios seleccionados")
+    basket_panel = w.VBox([basket_summary, basket,
+                            w.HBox([remove_from_basket, clear_basket])])
     selection_help = w.HTML()
     location = w.HTML()
     start_help = w.HTML()
+    # Select an existing Drive folder as the parent of the project directory.
+    # Results always follow <chosen>/<project>/Transcripciones, preserving
+    # project-scoped resume hashes and technical exports.
+    destination_current = root
+    destination_options = w.Dropdown(description="Abrir en Drive:",
+                                      options=[("Elige carpeta…", "")])
+    destination_enter = w.Button(description="Abrir carpeta")
+    destination_back = w.Button(description="Subir nivel")
+    destination_use = w.Button(description="Guardar aquí", button_style="info")
+    destination_new_name = w.Text(description="Carpeta nueva:",
+                                  placeholder="Nombre (opcional)")
+    destination_create = w.Button(description="Crear y elegir")
+    destination_status = w.HTML()
+    destination_location = w.HTML()
+
     preview = w.HTML()
     count = w.HTML("Elige una carpeta específica para buscar grabaciones.")
     gpu = runtime.cuda_available
@@ -144,12 +176,18 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     logs.set_title(0, "Detalles técnicos")
     logs.selected_index = None
     state = {"busy": False, "finding": False, "folder": root, "selected_folder": None, "failed": [],
-             "archive": None, "stage": "Esperando", "since": 0.0, "audio_since": 0.0}
+             "archive": None, "stage": "Esperando", "since": 0.0, "audio_since": 0.0,
+             "audio_candidates": [], "selected_audios": set(), "page": 0,
+             "output_base": output_root}
     stop_event = threading.Event()
     done_event = threading.Event()
     controls = [project_input, language, folder, folders, up, enter, scan, recursive,
                 recordings, cpu_consent, mode, diarize, check, glossary_input, force,
-                find, found_folders, speaker_count]
+                find, found_folders, speaker_count, audio_filter, select_visible,
+                deselect_visible, page_previous, page_next, basket,
+                remove_from_basket, clear_basket, destination_options,
+                destination_enter, destination_back, destination_use,
+                destination_new_name, destination_create]
 
     def note(message):
         details.append_stdout(redact(message) + "\n")
