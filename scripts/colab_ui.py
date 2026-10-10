@@ -645,7 +645,13 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                 progress.bar_style = "warning" if has_pending else "success"
                 warned = sum(bool(i.get("warnings")) for key in ("completed", "skipped")
                              for i in report[key])
-                update_stage("Lote finalizado con pendientes" if has_pending else "Lote finalizado")
+                finished_count = len(report["completed"]) + len(report["skipped"])
+                if has_pending or report["pending"]:
+                    update_stage("Lote detenido o finalizado con pendientes")
+                elif finished_count == len(selected):
+                    update_stage("Lote completado; resultados listos para revisar")
+                else:
+                    update_stage("Lote terminado sin confirmar todos los audios")
                 summary.value += f" · {report['pending']} sin procesar · {warned} con observaciones"
                 if has_pending:
                     pending_names = ", ".join(p.name for p in state["failed"][:5])
@@ -676,6 +682,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                            else "No se completó. Revisa carpeta, memoria o conexión "
                            "a Drive y reintenta.")
                 update_stage(message)
+                summary.value = "<b>La transcripción no se completó.</b> Abre Detalles técnicos."
                 if access_only:
                     speaker_status.value = escape(message)
                 if isinstance(exc, TimeoutError):
@@ -702,6 +709,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                     done_event.set()
                 state["busy"] = False
                 state["audio_since"] = 0.0
+                start.description = "Comenzar transcripción"
                 for control in controls:
                     control.disabled = False
                 stop.disabled = True
