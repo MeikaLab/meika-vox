@@ -245,6 +245,70 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             "Los originales permanecen en sus carpetas y los resultados se guardan por proyecto."
         )
 
+    def browse_destination(path):
+        path = path.resolve()
+        if not path.is_relative_to(root) or not path.is_dir():
+            raise ValueError("El destino debe ser una carpeta existente de Mi unidad.")
+        if path.is_relative_to(output_root):
+            raise ValueError("No elijas una carpeta técnica de resultados como base.")
+        state["destination_browse"] = path
+        child_folders = sorted(
+            (p for p in path.iterdir() if p.is_dir()
+             and p.resolve().is_relative_to(root)),
+            key=lambda p: p.name.casefold(),
+        )
+        destination_options.options = [("Elige una subcarpeta…", "")] + [
+            (p.name, str(p)) for p in child_folders
+        ]
+        destination_options.value = ""
+        destination_back.disabled = path == root
+        destination_location.value = (
+            f"Explorando: Mi unidad / {escape(str(path.relative_to(root)))}"
+        )
+
+    def destination_open(_):
+        if not destination_options.value:
+            return
+        try:
+            browse_destination(Path(destination_options.value))
+        except (OSError, ValueError) as exc:
+            destination_status.value = escape(str(exc))
+
+    def destination_up(_):
+        browse_destination(state["destination_browse"].parent)
+
+    def destination_select(_):
+        path = state["destination_browse"]
+        # The project subdirectory remains isolated for resume and exports.
+        state["output_base"] = path
+        destination_status.value = (
+            "<b>Destino elegido:</b> Mi unidad / "
+            + escape(str(path.relative_to(root)))
+        )
+        ready()
+
+    def destination_create_folder(_):
+        name = destination_new_name.value.strip()
+        if not name or name in {".", ".."} or "/" in name or "\\\\" in name:
+            destination_status.value = "Escribe un nombre de carpeta válido."
+            return
+        if len(name) > 80 or any(ord(char) < 32 for char in name):
+            destination_status.value = "Nombre inválido o demasiado largo."
+            return
+        target = state["destination_browse"] / name
+        if target.exists() and not target.is_dir():
+            destination_status.value = "Ya existe un archivo con ese nombre."
+            return
+        try:
+            target.mkdir(exist_ok=True)
+            browse_destination(target)
+            destination_select(None)
+            destination_new_name.value = ""
+        except OSError as exc:
+            destination_status.value = (
+                "No se pudo crear la carpeta: " + escape(type(exc).__name__)
+            )
+
     def render_results(report):
         rows = []
         for key, label in (("completed", "Guardado"), ("skipped", "Ya existía"),
@@ -562,7 +626,8 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         # Freeze settings before a worker starts; never read changing widget values mid-run.
         settings = {"project": project_input.value.strip() or state["folder"].name,
                     "language": language.value,
-                    "folder": folder.value, "diarize": diarize.value,
+                    "folder": folder.value,
+                    "output_base": str(state["output_base"]), "diarize": diarize.value,
                     "backend": "sherpa" if mode.value == "sherpa" else "pyannote",
                     "speakers": speaker_count.value or None,
                     "force": force.value, "glossary": glossary_input.value.strip()}
@@ -641,8 +706,11 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                 if access_only:
                     update_stage("Acceso comprobado. Puedes transcribir.")
                     return
-                path = safe_folder(settings["folder"])
-                output = output_root / project_id / "Transcripciones"
+                path = root  # Selected audios may belong to several source folders.
+                base = Path(settings["output_base"]).resolve()
+                if not base.is_relative_to(root) or not base.is_dir():
+                    raise ValueError("Elige un destino válido dentro de Mi unidad.")
+                output = base / project_id / "Transcripciones"
                 glossary = None
                 command = ["meika-vox", "--project-id", project_id, "--language",
                            settings["language"], "--model", model]
@@ -659,7 +727,8 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                     command += ["--glossary", str(glossary_path)]
                 preferences_tmp = preferences.with_suffix(".tmp")
                 preferences_tmp.write_text(json.dumps({k: settings[k] for k in
-                                           ("project", "language", "folder")}), encoding="utf-8")
+                                           ("project", "language", "folder", "output_base")}),
+                                           encoding="utf-8")
                 preferences_tmp.replace(preferences)
 
                 def save_engine_log(exc, audio=None):
@@ -889,6 +958,18 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         }[selected_mode]
         ready()
 
+    audio_filter.observe(lambda _: (state.__setitem__("page", 0),
+                                    make_choices()), names="value")
+    select_visible.on_click(lambda _: choose_visible(True))
+    deselect_visible.on_click(lambda _: choose_visible(False))
+    page_previous.on_click(lambda _: change_page(-1))
+    page_next.on_click(lambda _: change_page(1))
+    remove_from_basket.on_click(remove_basket)
+    clear_basket.on_click(clear_basket_selection)
+    destination_enter.on_click(destination_open)
+    destination_back.on_click(destination_up)
+    destination_use.on_click(destination_select)
+    destination_create.on_click(destination_create_folder)
     mode.observe(change_mode, names="value")
     change_mode({"new": mode.value})
     find.on_click(search_folders)
@@ -936,13 +1017,29 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         w.HTML("<div style='background:#f1f7f6;padding:16px;border-radius:10px;color:#1a4146'>"
                "<h2>MEIKA Vox</h2>Elige tus audios, transcribe y descarga los textos.</div>"),
         location, folders, up, count, scan, find, cancel_find, search_status, found_folders,
-        manual, selection, recordings,
+        manual,
+        w.HTML("<h3>1. Selecciona los audios</h3>"),
+        selection, basket_panel, recordings,
+        w.HTML("<h3>2. Elige la carpeta de destino en Drive</h3>"),
+        destination_location, destination_options,
+        w.HBox([destination_enter, destination_back, destination_use]),
+        w.HBox([destination_new_name, destination_create]), destination_status,
         project_input, motor, cpu_consent,
         w.HTML("<b>¿Cómo quieres transcribir?</b>"), mode, mode_help,
         speaker_help, speaker_setup, speaker_options, advanced, plan, start_help, start, activity,
         w.HTML("Español por defecto. Si Colab se desconecta, abre de nuevo el panel y elige "
                "el mismo proyecto. Los audios ya guardados se conservan."),
     ]))
+    try:
+        last_output = Path(saved.get("output_base", str(output_root))).resolve()
+        browse_destination(last_output if last_output.is_dir()
+                           and last_output.is_relative_to(root)
+                           and not last_output.is_relative_to(output_root)
+                           else root)
+        destination_select(None)
+    except (OSError, ValueError):
+        browse_destination(root)
+        destination_select(None)
     try:
         browse(safe_folder(saved.get("folder", "")))
     except (OSError, ValueError):
@@ -958,4 +1055,12 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             "cancel_find": cancel_find, "mode": mode, "mode_help": mode_help,
             "speaker_setup": speaker_setup, "speaker_count": speaker_count,
             "refresh_status": refresh_status, "plan": plan, "results_table": results_table,
-            "diagnostic": diagnostic, "diagnostic_status": diagnostic_status}
+            "diagnostic": diagnostic, "diagnostic_status": diagnostic_status,
+            "audio_filter": audio_filter, "basket": basket,
+            "select_visible": select_visible, "deselect_visible": deselect_visible,
+            "remove_from_basket": remove_from_basket, "clear_basket": clear_basket,
+            "page_next": page_next, "page_previous": page_previous,
+            "destination_options": destination_options, "destination_use": destination_use,
+            "destination_create": destination_create,
+            "destination_new_name": destination_new_name,
+            "destination_location": destination_location}
