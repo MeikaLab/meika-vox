@@ -13,9 +13,11 @@ Código abierto para procesar entrevistas, reuniones, talleres y grupos focales 
 1. Abre el botón **Abrir en Google Colab** y entra con tu cuenta Google.
 2. En **Entorno de ejecución → Cambiar tipo de entorno de ejecución**, elige GPU (T4 si aparece), si está disponible.
 3. Pulsa ▶ en **Preparar y abrir MEIKA Vox** y autoriza tu Drive. El panel aparece arriba, en esa misma celda.
-4. Elige una carpeta de Mi unidad en la lista: se abre y busca los audios automáticamente.
-5. Elige **Solo transcribir · sin token** o **Separar hablantes · con token** y pulsa **Transcribir N audios**. Se usa español y el nombre de la carpeta como proyecto; puedes cambiarlos en el panel.
-6. Descarga el ZIP de textos o revisa `Mi unidad/MEIKA_Vox/Proyectos/<nombre_proyecto>/Transcripciones/Lectura`.
+4. Pulsa **Encontrar carpetas con audios** o navega a una carpeta específica. El buscador muestra carpetas con grabaciones.
+5. **Marca los audios que quieras transcribir**. Puedes filtrar por nombre, avanzar por páginas de 40, seleccionar todos los visibles o quitar archivos. La selección se mantiene al abrir otra carpeta de origen. Los audios no se marcan todos automáticamente.
+6. En **Destino**, navega por tu Drive y elige o crea la carpeta en la que quedarán las transcripciones. El sistema crea `<destino>/<nombre_proyecto>/Transcripciones`, manteniendo `Lectura`, los respaldos técnicos y la reanudación separados por proyecto. Si no cambias el destino, conserva `Mi unidad/MEIKA_Vox/Proyectos`.
+7. Elige **Solo transcribir · sin token** o un modo opcional de hablantes y pulsa **Transcribir N audios**. El idioma predeterminado es español; puedes modificarlo.
+8. Revisa los TXT en `<destino>/<nombre_proyecto>/Transcripciones/Lectura` o descarga el ZIP. Los originales no se mueven de sus carpetas.
 
 [Guía breve: voces, progreso, recuperación y límites](docs/COLAB_USUARIOS.md).
 
