@@ -214,3 +214,59 @@ def test_recovery_indexes_manifests_only_once_per_batch(tmp_path: Path, monkeypa
     )
     assert len(report["failed"]) == 2
     assert scans == ["manifest.json"]
+
+
+def test_batch_persists_failure_report_when_runner_fails(tmp_path: Path):
+    import json
+
+    source = tmp_path / "audios"
+    source.mkdir()
+    (source / "fallido.wav").write_bytes(b"audio")
+    destination = tmp_path / "out"
+
+    def crash(*args):
+        raise RuntimeError("simulated worker error")
+
+    result = batch.process_folder(
+        source, destination, ["meika-vox", "--project-id", "demo"],
+        runner_with_checksum=crash,
+    )
+    saved = json.loads((destination / "batch_last_report.json").read_text())
+    assert result["status"] == saved["status"] == "incomplete"
+    assert len(saved["failed"]) == 1
+    assert saved["pending"] == 0
+
+
+def test_zip_failure_keeps_verified_text_and_report(tmp_path: Path, monkeypatch):
+    import json
+
+    source = tmp_path / "audios"
+    source.mkdir()
+    (source / "correcto.wav").write_bytes(b"audio")
+    destination = tmp_path / "out"
+
+    monkeypatch.setattr(batch, "complete_run", lambda run: True)
+
+    def save(*args):
+        run = destination / "asset" / "run"
+        run.mkdir(parents=True)
+        (run / "manifest.json").write_text(
+            json.dumps({"asset": {"checksum_sha256": batch.fingerprint(source / "correcto.wav")},
+                        "run": {"status": "COMPLETED"}})
+        )
+        (run / "transcript_normalized.txt").write_text("Texto válido")
+        return run
+
+    def failed_zip(*args):
+        raise OSError("No space on device")
+
+    monkeypatch.setattr(batch, "make_text_archive", failed_zip)
+    result = batch.process_folder(
+        source, destination, ["meika-vox", "--project-id", "demo"],
+        runner_with_checksum=save,
+    )
+    assert len(result["completed"]) == 1
+    assert result["status"] == "texts_saved_zip_failed"
+    assert result["archive_error"] == "OSError"
+    assert (destination / "batch_last_report.json").exists()
+    assert next((destination / "Lectura").glob("*.txt")).read_text() == "Texto válido"
