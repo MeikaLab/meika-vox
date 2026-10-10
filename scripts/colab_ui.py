@@ -287,6 +287,11 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         ready()
 
     def destination_create_folder(_):
+        if state["destination_browse"].is_relative_to(output_root):
+            destination_status.value = (
+                "Sube al nivel Mi unidad u otra carpeta antes de crear el destino."
+            )
+            return
         name = destination_new_name.value.strip()
         if not name or name in {".", ".."} or "/" in name or "\\\\" in name:
             destination_status.value = "Escribe un nombre de carpeta válido."
