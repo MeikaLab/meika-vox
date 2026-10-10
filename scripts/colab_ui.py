@@ -640,6 +640,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                 state["failed"] += [p for p in selected if str(p) not in reviewed]
                 archive = output / "Transcripciones.zip"
                 state["archive"] = (archive if archive.is_file()
+                                    and not report.get("archive_error")
                                     and (report["completed"] or report["skipped"]) else None)
                 has_pending = bool(state["failed"])
                 progress.bar_style = "warning" if has_pending else "success"
@@ -648,11 +649,15 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                 finished_count = len(report["completed"]) + len(report["skipped"])
                 if has_pending or report["pending"]:
                     update_stage("Lote detenido o finalizado con pendientes")
+                elif report.get("archive_error"):
+                    update_stage("Textos guardados; falló el ZIP. Puedes reintentar sin reprocesar")
                 elif finished_count == len(selected):
                     update_stage("Lote completado; resultados listos para revisar")
                 else:
                     update_stage("Lote terminado sin confirmar todos los audios")
                 summary.value += f" · {report['pending']} sin procesar · {warned} con observaciones"
+                if report.get("archive_error"):
+                    summary.value += "<br><b>Los TXT están guardados. No se generó el ZIP.</b>"
                 if has_pending:
                     pending_names = ", ".join(p.name for p in state["failed"][:5])
                     summary.value += (f"<br><b>Pendientes:</b> {escape(pending_names)}. "
