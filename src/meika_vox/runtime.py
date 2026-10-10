@@ -44,8 +44,11 @@ def inspect_runtime() -> RuntimeReport:
     torch_available = _module("torch")
     pyannote = _module("pyannote.audio")
 
-    cuda_available = False
-    if torch_available:
+    # The Colab notebook probes GPU with a fresh Python process; the kernel
+    # might still hold an earlier, incompatible torch version in sys.modules.
+    verified_cuda = os.getenv("MEIKA_VOX_CUDA_AVAILABLE")
+    cuda_available = verified_cuda == "1" if verified_cuda in {"0", "1"} else False
+    if verified_cuda not in {"0", "1"} and torch_available:
         try:
             import torch
 

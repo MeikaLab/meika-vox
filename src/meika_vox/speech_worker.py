@@ -1,12 +1,15 @@
-"""Private subprocess protocol: keep native speech imports out of the widget process."""
+"""Worker protocol: structured, credential-safe stage errors."""
 
 from __future__ import annotations
 
 import contextlib
 import json
 import sys
+import traceback
 from dataclasses import asdict
 from pathlib import Path
+
+from .redact import redact, tail
 
 PREFIX = "MEIKA_EVENT "
 
@@ -19,34 +22,48 @@ def main():
         channel.flush()
 
     provider = None
+    secrets = []
+    current_stage = "inicio"
+
+    def stage(message):
+        nonlocal current_stage
+        current_stage = message
+        emit("stage", message=message)
+
     for line in sys.stdin:
         try:
             request = json.loads(line)
             with contextlib.redirect_stdout(sys.stderr):
-                if request["action"] == "init":
-                    emit("stage", message="Iniciando proceso de transcripción")
+                action = request["action"]
+                if action == "init":
+                    secrets = [request["settings"].get("hf_token")]
+                    stage("Iniciando proceso de transcripción")
                     from .providers.whisperx_provider import WhisperXProvider
 
                     provider = WhisperXProvider(
-                        **request["settings"],
-                        on_stage=lambda message: emit("stage", message=message),
+                        **request["settings"], on_stage=stage
                     )
                     emit("ok")
-                elif request["action"] == "check":
+                elif action == "check":
                     provider.check_diarization()
                     emit("ok")
-                elif request["action"] == "transcribe":
+                elif action == "transcribe":
                     result = provider.transcribe(Path(request["path"]))
                     emit("result", value=asdict(result))
-                elif request["action"] == "release":
+                elif action == "release":
                     provider.release()
                     emit("ok")
                     return
                 else:
                     raise ValueError("Unknown worker action")
         except Exception as exc:
-            # Upstream exception messages may contain HF tokens. Never send them to the panel.
-            emit("error", error_type=type(exc).__name__)
+            emit(
+                "error",
+                error_type=type(exc).__name__,
+                stage=current_stage,
+                message=tail(redact(exc, secrets), 600),
+                traceback=tail(redact(traceback.format_exc(), secrets), 3500),
+            )
 
 
 if __name__ == "__main__":

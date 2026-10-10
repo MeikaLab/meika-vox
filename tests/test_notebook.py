@@ -24,8 +24,23 @@ def test_public_notebook_is_generic() -> None:
 
 def test_notebook_does_not_print_internal_widget_dictionary():
     notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
-    code = next(c for c in notebook["cells"] if c["cell_type"] == "code")
+    # The notebook has a preparation cell and a separate Drive/panel cell.
+    code = next(c for c in reversed(notebook["cells"]) if c["cell_type"] == "code")
     last = ast.parse("".join(code["source"])).body[-1]
     assert isinstance(last, ast.Assign)
     assert isinstance(last.value, ast.Call)
     assert last.value.func.attr == "build_panel"
+
+
+def test_colab_unified_startup_does_not_abort_on_preloaded_torch() -> None:
+    notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+    code_cells = [cell for cell in notebook["cells"] if cell["cell_type"] == "code"]
+    assert len(code_cells) == 1
+    code = "".join(code_cells[0]["source"])
+    assert 'if loaded:' in code
+    assert "un proceso Python independiente" in code
+    assert "reinicia la sesión de Colab antes de actualizar dependencias" not in code
+    assert "READY_MARKER" in code
+    assert "cached_ready()" in code
+    assert "drive.mount" in code
+    assert "MEIKA_CUDA_AVAILABLE=" in code

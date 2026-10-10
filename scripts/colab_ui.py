@@ -6,10 +6,13 @@ import importlib.util
 import json
 import re
 import shutil
+import subprocess
+import sys
 import tempfile
 import threading
 import time
 import unicodedata
+from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
 from urllib.parse import quote
@@ -32,6 +35,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     from meika_vox.normalization import load_glossary
     from meika_vox.pipeline import run_transcription
     from meika_vox.providers.isolated_provider import IsolatedWhisperXProvider as WhisperXProvider
+    from meika_vox.redact import redact, tail
     from meika_vox.runtime import inspect_runtime
 
     spec = importlib.util.spec_from_file_location("vox_batch", repo / "scripts/colab_batch.py")
@@ -128,15 +132,19 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     stage = w.HTML("Esperando selección.")
     refresh_status = w.Button(description="Actualizar estado")
     summary = w.HTML()
+    plan = w.HTML()
+    results_table = w.HTML()
     results = w.HTML()
     download = w.Button(description="Descargar textos ZIP", disabled=True)
     retry = w.Button(description="Reintentar pendientes", disabled=True)
     details = w.Output()
-    logs = w.Accordion(children=[details])
+    diagnostic = w.Button(description="Guardar diagnóstico en Drive")
+    diagnostic_status = w.HTML()
+    logs = w.Accordion(children=[w.VBox([diagnostic, diagnostic_status, details])])
     logs.set_title(0, "Detalles técnicos")
     logs.selected_index = None
     state = {"busy": False, "finding": False, "folder": root, "selected_folder": None, "failed": [],
-             "archive": None, "stage": "Esperando", "since": 0.0}
+             "archive": None, "stage": "Esperando", "since": 0.0, "audio_since": 0.0}
     stop_event = threading.Event()
     done_event = threading.Event()
     controls = [project_input, language, folder, folders, up, enter, scan, recursive,
@@ -144,7 +152,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                 find, found_folders, speaker_count]
 
     def note(message):
-        details.append_stdout(re.sub(r"hf_[A-Za-z0-9]+", "[clave oculta]", str(message)) + "\n")
+        details.append_stdout(redact(message) + "\n")
 
     def safe_folder(value):
         path = (root / value).resolve()
@@ -165,9 +173,52 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         download.disabled = True
         download.layout.display = "none"
         activity.layout.display = "none"
-        results.value = preview.value = ""
+        results.value = preview.value = results_table.value = ""
+        plan.value = ""
+
+    def update_plan():
+        # Avoid stat() calls against every Drive audio whenever a widget changes.
+        selected_count = len(recordings.value)
+        if not selected_count:
+            plan.value = ""
+            return
+        project = project_input.value.strip() or state["folder"].name
+        try:
+            destination = project_slug(project)
+        except ValueError:
+            destination = "Escribe un nombre de proyecto"
+        hardware = "GPU · WhisperX large-v3" if gpu else "CPU · WhisperX small"
+        plan.value = (
+            f"<b>Antes de comenzar:</b> {selected_count} audios · "
+            f"{escape(hardware)} · modalidad {escape(mode.label)} · "
+            f"Mi unidad / MEIKA_Vox / Proyectos / {escape(destination)} / Transcripciones. "
+            "Cada audio terminado se guarda inmediatamente."
+        )
+
+    def render_results(report):
+        rows = []
+        for key, label in (("completed", "Guardado"), ("skipped", "Ya existía"),
+                           ("failed", "Con error")):
+            for item in report[key]:
+                audio = Path(item["audio"]).name
+                hint = ("Reintentar y revisar diagnóstico" if key == "failed"
+                        else "Con observaciones" if item.get("warnings")
+                        else "Texto listo para revisar")
+                rows.append((audio, label, hint))
+        if not rows:
+            return ""
+        body = "".join(
+            "<tr>" + "".join(
+                f"<td style='padding:6px;border-bottom:1px solid #ddd'>{escape(v)}</td>"
+                for v in row
+            ) + "</tr>" for row in rows
+        )
+        return ("<div style='overflow-x:auto'><table style='width:100%;text-align:left'>"
+                "<tr><th>Audio</th><th>Estado</th><th>Observación</th></tr>"
+                f"{body}</table></div>")
 
     def ready(*_):
+        update_plan()
         reason = ""
         if not recordings.value:
             reason = "Selecciona al menos un audio."
@@ -375,6 +426,9 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         elapsed = max(0, int(time.monotonic() - state["since"])) if state["since"] else 0
         stage.value = (f"{escape(state['stage'])} · Tiempo del lote: "
                        f"{elapsed // 60:02d}:{elapsed % 60:02d}")
+        if state["busy"] and state["audio_since"]:
+            elapsed_audio = int(time.monotonic() - state["audio_since"])
+            stage.value += f" · Audio actual: {elapsed_audio // 60:02d}:{elapsed_audio % 60:02d}"
         if state["busy"]:
             quiet = int(time.monotonic() - state.get("last_stage", state["since"]))
             if quiet >= 60:
@@ -417,6 +471,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             speaker_status.value = "Comprobando acceso; la primera descarga puede tardar…"
         state["busy"] = True
         state["since"] = time.monotonic()
+        state["audio_since"] = 0.0
         update_stage("Iniciando; cada audio terminado se guarda en Drive")
         done_event.clear()
         stop_event.clear()
@@ -439,6 +494,32 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             provider = None
             try:
                 project_id = project_slug(settings["project"])
+                # Instalar voces sin token solo cuando se seleccionan; nunca exigirlas
+                # al usuario que quiere únicamente transcripción.
+                if (
+                    settings["diarize"]
+                    and settings["backend"] == "sherpa"
+                    and not test_mode
+                    and importlib.util.find_spec("sherpa_onnx") is None
+                ):
+                    update_stage("Instalando módulo opcional de hablantes sin token…")
+                    try:
+                        installed = subprocess.run(
+                            [sys.executable, "-m", "pip", "install", "sherpa-onnx>=1.10.28,<2"],
+                            capture_output=True,
+                            text=True,
+                            timeout=600,
+                            check=False,
+                        )
+                        if installed.returncode:
+                            update_stage(
+                                "No se pudo instalar Sherpa. Se intentará conservar el texto "
+                                "con una advertencia de voces."
+                            )
+                    except (OSError, subprocess.TimeoutExpired):
+                        update_stage(
+                            "La instalación de Sherpa falló. El texto igualmente se conservará."
+                        )
                 model = "large-v3" if gpu else "small"
                 provider = WhisperXProvider(
                     model=model, language=settings["language"], device="cuda" if gpu else "cpu",
@@ -447,9 +528,11 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                     min_speakers=settings["speakers"], max_speakers=settings["speakers"],
                     on_stage=update_stage, allow_diarization_fallback=True,
                 )
-                state["checking_speakers"] = bool(settings["diarize"] or access_only)
-                if settings["diarize"] or access_only:
-                    update_stage("Preparando separación de voces; primera descarga puede tardar")
+                # La modalidad de transcripción nunca se bloquea por la preparación de voces.
+                # El proveedor comprueba diarización después del ASR y conserva el texto si falla.
+                state["checking_speakers"] = bool(access_only)
+                if access_only:
+                    update_stage("Comprobando separación de voces")
                     provider.check_diarization()
                     speaker_status.value = "Acceso comprobado."
                 state["checking_speakers"] = False
@@ -477,17 +560,51 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                                            ("project", "language", "folder")}), encoding="utf-8")
                 preferences_tmp.replace(preferences)
 
-                def runner(audio, destination):
+                def save_engine_log(exc, audio=None):
+                    """Save sanitized engine failures to Drive."""
+                    try:
+                        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+                        log_dir = output / "logs"
+                        log_dir.mkdir(parents=True, exist_ok=True)
+                        native = provider.diagnostics() if provider and hasattr(
+                            provider, "diagnostics"
+                        ) else ""
+                        body = "\n".join([
+                            f"Momento UTC: {stamp}",
+                            f"Audio: {audio.name if audio else '-'}",
+                            f"Etapa: {getattr(exc, 'stage', '') or state.get('stage', '-')}",
+                            f"Tipo: {getattr(exc, 'error_type', type(exc).__name__)}",
+                            f"Causa: {exc}",
+                            "--- Traceback motor ---",
+                            getattr(exc, "traceback", "") or "-",
+                            "--- Salida nativa ---",
+                            native or "-",
+                        ])
+                        target = log_dir / f"error_motor_{stamp}.log"
+                        target.write_text(
+                            redact(tail(body, 12000), [token]), encoding="utf-8"
+                        )
+                        note(f"Diagnóstico guardado: {target.relative_to(root)}")
+                    except (OSError, ValueError):
+                        note("No se pudo guardar el diagnóstico en Drive.")
+
+                def runner_with_checksum(audio, destination, expected_checksum):
+                    try:
+                        return run_one(audio, destination, expected_checksum)
+                    except Exception as exc:
+                        save_engine_log(exc, audio)
+                        raise
+
+                def run_one(audio, destination, expected_checksum):
                     update_stage(f"Copiando temporalmente {audio.name}")
                     with tempfile.TemporaryDirectory(prefix="meika-vox-") as scratch:
                         local = Path(scratch) / audio.name
                         shutil.copyfile(audio, local)
-                        local_checksum = batch.fingerprint(local)
                         update_stage("Comprobando audio y calidad")
                         bundle = run_transcription(local, project_id, provider, glossary=glossary)
                         bundle.asset.source_path = str(audio)
                         bundle.asset.source_filename = audio.name
-                        if local_checksum != bundle.asset.checksum_sha256:
+                        if expected_checksum != bundle.asset.checksum_sha256:
                             raise RuntimeError("La copia del audio cambió durante el proceso.")
                         update_stage("Guardando y verificando resultados en Drive")
                         local_run = write_bundle(bundle, Path(scratch) / "resultado")
@@ -505,28 +622,42 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                                      f"{info['skipped']} ya existentes "
                                      f"· {info['failed']} con error")
                     if info["event"] == "started":
+                        state["audio_since"] = time.monotonic()
                         current_audio.value = (f"Audio {info['index']} de {info['total']}: "
                                                f"<b>{escape(info['audio'])}</b>")
                         update_stage(f"Audio {info['index']} de {info['total']}: {info['audio']}")
 
                 report = batch.process_folder(
-                    path, output, command, selected=selected, runner=runner,
+                    path, output, command, selected=selected,
+                    runner_with_checksum=runner_with_checksum,
                     configuration="user-panel-v1", force=settings["force"], emit=note,
                     on_progress=on_progress, should_stop=stop_event.is_set,
                 )
+                results_table.value = render_results(report)
                 state["failed"] = [Path(i["audio"]) for i in report["failed"]]
                 reviewed = {i["audio"] for key in ("completed", "skipped", "failed")
                             for i in report[key]}
                 state["failed"] += [p for p in selected if str(p) not in reviewed]
                 archive = output / "Transcripciones.zip"
                 state["archive"] = (archive if archive.is_file()
+                                    and not report.get("archive_error")
                                     and (report["completed"] or report["skipped"]) else None)
                 has_pending = bool(state["failed"])
                 progress.bar_style = "warning" if has_pending else "success"
                 warned = sum(bool(i.get("warnings")) for key in ("completed", "skipped")
                              for i in report[key])
-                update_stage("Lote finalizado con pendientes" if has_pending else "Lote finalizado")
+                finished_count = len(report["completed"]) + len(report["skipped"])
+                if has_pending or report["pending"]:
+                    update_stage("Lote detenido o finalizado con pendientes")
+                elif report.get("archive_error"):
+                    update_stage("Textos guardados; falló el ZIP. Puedes reintentar sin reprocesar")
+                elif finished_count == len(selected):
+                    update_stage("Lote completado; resultados listos para revisar")
+                else:
+                    update_stage("Lote terminado sin confirmar todos los audios")
                 summary.value += f" · {report['pending']} sin procesar · {warned} con observaciones"
+                if report.get("archive_error"):
+                    summary.value += "<br><b>Los TXT están guardados. No se generó el ZIP.</b>"
                 if has_pending:
                     pending_names = ", ".join(p.name for p in state["failed"][:5])
                     summary.value += (f"<br><b>Pendientes:</b> {escape(pending_names)}. "
@@ -556,6 +687,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                            else "No se completó. Revisa carpeta, memoria o conexión "
                            "a Drive y reintenta.")
                 update_stage(message)
+                summary.value = "<b>La transcripción no se completó.</b> Abre Detalles técnicos."
                 if access_only:
                     speaker_status.value = escape(message)
                 if isinstance(exc, TimeoutError):
@@ -567,7 +699,9 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                 elif isinstance(exc, PermissionError):
                     update_stage("Drive no permite guardar. Reconecta Drive y reintenta.")
                 # No upstream exception text or tokens enter shared notebook output.
-                note(f"Tipo de error: {type(exc).__name__}")
+                note(f"Error técnico: {redact(exc, [token])[:700]}")
+                if "save_engine_log" in locals():
+                    save_engine_log(exc)
             finally:
                 try:
                     if provider:
@@ -579,6 +713,8 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                     lock_handle.close()
                     done_event.set()
                 state["busy"] = False
+                state["audio_since"] = 0.0
+                start.description = "Comenzar transcripción"
                 for control in controls:
                     control.disabled = False
                 stop.disabled = True
@@ -597,6 +733,29 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             box.disabled = True
         threading.Thread(target=heartbeat, name="MEIKA_Vox_clock", daemon=True).start()
         threading.Thread(target=work, name="MEIKA_Vox_batch", daemon=True).start()
+
+    def save_diagnostic(_):
+        try:
+            location = output_root.parent / "Diagnosticos"
+            location.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+            target = location / f"diagnostico_{stamp}.txt"
+            # No full paths, tokens, environment variables or interview text.
+            message = "\\n".join([
+                f"Hora UTC: {stamp}",
+                f"Etapa: {state['stage']}",
+                f"GPU: {gpu}",
+                f"Modalidad: {mode.value}",
+                f"Audios seleccionados: {len(recordings.value)}",
+                "Para errores por audio: revisa Transcripciones/logs/",
+            ])
+            target.write_text(redact(message, [secret()]), encoding="utf-8")
+            diagnostic_status.value = (
+                "Diagnóstico guardado en Mi unidad / "
+                + escape(str(target.relative_to(root)))
+            )
+        except (OSError, ValueError):
+            diagnostic_status.value = "No se pudo guardar el diagnóstico en Drive."
 
     def start_batch(_):
         launch([Path(value) for value in recordings.value])
@@ -643,8 +802,11 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     recordings.observe(ready, names="value")
     cpu_consent.observe(ready, names="value")
     project_input.observe(ready, names="value")
+    language.observe(ready, names="value")
+    force.observe(ready, names="value")
     check.on_click(lambda _: launch([], access_only=True))
     refresh_status.on_click(render_status)
+    diagnostic.on_click(save_diagnostic)
     start.on_click(start_batch)
     stop.on_click(stop_after)
     retry.on_click(lambda _: launch(state["failed"], access_only=False))
@@ -655,7 +817,8 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     manual.set_title(0, "Escribir una ruta (opcional)")
     manual.selected_index = None
     # Keep the chosen folder visible while working; no hidden wizard state.
-    activity = w.VBox([progress, current_audio, stage, refresh_status, summary, stop, results,
+    activity = w.VBox([progress, current_audio, stage, refresh_status, summary, stop,
+                       results_table, results,
                        download, retry, preview, logs])
     activity.layout.display = "none"
     for button in (scan, start, stop, download, retry, check, up, find, cancel_find):
@@ -674,7 +837,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         manual, selection, recordings,
         project_input, motor, cpu_consent,
         w.HTML("<b>¿Cómo quieres transcribir?</b>"), mode, mode_help,
-        speaker_help, speaker_setup, speaker_options, advanced, start_help, start, activity,
+        speaker_help, speaker_setup, speaker_options, advanced, plan, start_help, start, activity,
         w.HTML("Español por defecto. Si Colab se desconecta, abre de nuevo el panel y elige "
                "el mismo proyecto. Los audios ya guardados se conservan."),
     ]))
@@ -692,4 +855,5 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             "found_folders": found_folders, "search_status": search_status,
             "cancel_find": cancel_find, "mode": mode, "mode_help": mode_help,
             "speaker_setup": speaker_setup, "speaker_count": speaker_count,
-            "refresh_status": refresh_status}
+            "refresh_status": refresh_status, "plan": plan, "results_table": results_table,
+            "diagnostic": diagnostic, "diagnostic_status": diagnostic_status}

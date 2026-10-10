@@ -54,12 +54,15 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
     # Opening the panel must not scan My Drive or select any audio automatically.
     assert panel["recordings"].options == ()
     assert panel["activity"].layout.display == "none"
+    assert panel["plan"].value == ""
     panel["scan"].click()
     assert panel["recordings"].options == ()  # Root is rejected.
     panel["folders"].value = str(folder)
     assert panel["folder"].value == "Entrevistas"
     assert panel["project"].value == "Entrevistas"
     assert len(panel["recordings"].value) == 1
+    assert "1 audios" in panel["plan"].value
+    assert "Transcripciones" in panel["plan"].value
     assert panel["activity"].layout.display == "none"
     assert panel["start"].disabled  # No silent CPU fallback.
     assert "GPU" in panel["start_help"].value
@@ -95,6 +98,10 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
         assert "Hola" in texts.read(texts.namelist()[0]).decode("utf-8")
     assert panel["retry"].disabled
     assert "1 guardados" in panel["summary"].value
+    assert "audio.wav" in panel["results_table"].value
+    assert "Guardado" in panel["results_table"].value
+    panel["diagnostic"].click()
+    assert "Diagnóstico guardado" in panel["diagnostic_status"].value
     assert not panel["start"].disabled
     # Running again resumes the same job instead of producing another transcription.
     panel["start"].click()

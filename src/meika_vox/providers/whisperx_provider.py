@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gc
 import os
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -101,15 +102,20 @@ class WhisperXProvider:
         # Disable optional usage reporting before the speech engines create sessions.
         os.environ["PYANNOTE_METRICS_ENABLED"] = "0"
         try:
-            import onnxruntime
             import torch
             import whisperx
-
-            onnxruntime.disable_telemetry_events()
         except ImportError as exc:
             raise RuntimeError(
-                'WhisperX is not installed. Run: pip install -e ".[whisperx]"'
+                f"No se pudo importar WhisperX: {type(exc).__name__}: {exc}"
             ) from exc
+
+        # ONNX Runtime is optional for plain ASR; its failure must not block WhisperX.
+        try:
+            import onnxruntime
+
+            onnxruntime.disable_telemetry_events()
+        except (ImportError, AttributeError, RuntimeError):
+            pass
 
         device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
         compute_type = self.compute_type or ("float16" if device == "cuda" else "int8")
@@ -121,12 +127,19 @@ class WhisperXProvider:
         self.on_stage("Preparando audio")
         audio = whisperx.load_audio(str(audio_path))
         self.on_stage("Cargando modelo de transcripción")
+        model_started = time.monotonic()
         if self._model is None:
             self._model = whisperx.load_model(
                 self.model_name, device, compute_type=compute_type,
                 language=self.language, vad_method="silero",
             )
+            self.on_stage(
+                f"Modelo de transcripción preparado · {time.monotonic() - model_started:.1f} s"
+            )
+        else:
+            self.on_stage("Modelo de transcripción reutilizado en memoria")
         self.on_stage("Transcribiendo")
+        asr_started = time.monotonic()
         while True:
             try:
                 result = self._model.transcribe(audio, batch_size=self.batch_size)
@@ -144,18 +157,26 @@ class WhisperXProvider:
                 if device == "cuda":
                     torch.cuda.empty_cache()
                 self.on_stage("Ajustando memoria; se mantiene el mismo modelo")
+        self.on_stage(f"Reconocimiento terminado · {time.monotonic() - asr_started:.1f} s")
         detected_language = result.get("language") or self.language or "unknown"
         self.on_stage("Alineando marcas de tiempo")
+        alignment_started = time.monotonic()
         if self._aligner is None or self._align_language != detected_language:
             self._aligner = whisperx.load_align_model(
                 language_code=detected_language, device=device,
             )
             self._align_language = detected_language
+            self.on_stage(
+                f"Modelo de alineación preparado · {time.monotonic() - alignment_started:.1f} s"
+            )
+        else:
+            self.on_stage("Modelo de alineación reutilizado en memoria")
         align_model, metadata = self._aligner
         result = whisperx.align(
             result["segments"], align_model, metadata, audio, device,
             return_char_alignments=False,
         )
+        self.on_stage(f"Alineación terminada · {time.monotonic() - alignment_started:.1f} s")
         diarization_engine = None
         diarization_model = None
         warnings = []
