@@ -478,7 +478,9 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             folders.disabled = not children
             location.value = f"<b>Carpeta elegida:</b> Mi unidad / {escape(folder.value)}"
             up.disabled = path == root
-            if not project_input.value.strip() or project_input.value == state.get("auto_project"):
+            if (not state["selected_audios"] and (
+                    not project_input.value.strip()
+                    or project_input.value == state.get("auto_project"))):
                 automatic = path.name if path != root else "Audios de Mi unidad"
                 project_input.value = automatic
                 state["auto_project"] = automatic
