@@ -11,7 +11,7 @@ Revisa el estado de las acciones del PR antes de fusionarlo.
 ## 2. Verificar un audio real en Colab
 
 1. Abre `notebooks/MEIKA_Vox_Colab.ipynb` desde la rama del PR.
-2. Selecciona GPU T4 si Colab la ofrece, ejecuta **1 · Preparar MEIKA Vox** y registra los tiempos que imprime. Ejecuta **2 · Conectar Drive y abrir MEIKA Vox**. Si Drive falla, repite solo la celda 2; no reinstales el motor.
+2. Selecciona GPU T4 si Colab la ofrece, ejecuta la **única celda de inicio** (o **Ejecutar todo**). Preparará el motor, registrará tiempos y solicitará el permiso de Google Drive automáticamente. Si Drive falla, repite la misma celda: dentro de la misma sesión reutiliza el motor comprobado.
 3. Usa **Solo transcribir**, sin token, con un audio breve y real de 1–3 minutos, y comprueba las etapas separadas de ASR y alineación.
 4. Comprueba que aparezcan un TXT con contenido y un `manifest.json` en `Mi unidad/MEIKA_Vox/Proyectos/<PROYECTO>/Transcripciones`.
 5. Ejecuta el verificador, cambiando `<PROYECTO>` por el nombre del proyecto:
@@ -49,3 +49,9 @@ En una **sesión nueva** (no reutilizar un runtime con módulos importados), eje
 La salida comprueba paquetes, `pip check` e importaciones aisladas de `transformers.Pipeline`, `whisperx.asr` y `whisperx.alignment`. Copia esa salida y las duraciones de `/content/meika_vox_preparacion.txt` tras revisar que no haya rutas sensibles. Esta evidencia permite investigar el error histórico `Pipeline`; que los imports funcionen no prueba por sí solo por qué fallaba la sesión anterior.
 
 En esta rama hay una prueba real de CPU con `tiny` en GitHub Actions, pero **falta Colab GPU T4 + large-v3**; no confundir ambos niveles.
+
+## 7. Colab con PyTorch/Transformers precargados
+
+Colab puede arrancar con `torch`, `numpy` u otros paquetes importados en el núcleo, aunque sus versiones en disco sean incompatibles con los pins de MEIKA Vox. El cuaderno **no se detiene al detectar módulos viejos**: instala las versiones fijadas y ejecuta la comprobación real de WhisperX y la detección de GPU en un subproceso Python limpio. El motor de audio también corre en un trabajador independiente, evitando usar el `torch` importado previamente en el núcleo.
+
+En una sesión nueva de Colab las descargas pesadas pueden seguir siendo inevitables. Si una instalación termina con errores o `pip check` falla, detén el proceso y revisa `scripts/diagnose_engine.py --full`. No interpretes la ausencia de error al instalar como una transcripción real completada.
