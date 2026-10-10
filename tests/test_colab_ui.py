@@ -324,6 +324,18 @@ def test_filter_pagination_explicit_selection_and_drive_destination(tmp_path, mo
     assert panel["state"]["output_base"] == tmp_path / "MEIKA_Vox" / "Proyectos"
     panel["destination_new_name"].value = "Nuevo estudio"
     panel["destination_create"].click()
-    assert (tmp_path / "MEIKA_Vox" / "Proyectos" / "Nuevo estudio").is_dir()
-    # A nested technical results folder cannot be selected as another base.
-    assert panel["state"]["output_base"] == tmp_path / "MEIKA_Vox" / "Proyectos"
+    assert not (tmp_path / "MEIKA_Vox" / "Proyectos" / "Nuevo estudio").exists()
+    assert "Sube" in panel["destination_location"].value or (
+        panel["state"]["output_base"] == tmp_path / "MEIKA_Vox" / "Proyectos"
+    )
+    panel["destination_back"].click()
+    panel["destination_back"].click()
+    assert "Mi unidad" in panel["destination_location"].value
+    panel["destination_options"].value = str(target_base)
+    panel["destination_enter"].click()
+    panel["destination_use"].click()
+    assert panel["state"]["output_base"] == target_base
+    panel["destination_new_name"].value = "Nuevo estudio"
+    panel["destination_create"].click()
+    assert (target_base / "Nuevo estudio").is_dir()
+    assert panel["state"]["output_base"] == target_base / "Nuevo estudio"
