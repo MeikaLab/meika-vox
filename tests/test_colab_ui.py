@@ -274,3 +274,56 @@ def test_refresh_shows_elapsed_time_without_claiming_audio_progress(tmp_path, mo
     assert "01:10" in panel["stage"].value
     assert "no confirma avance" in panel["stage"].value
     assert "Preparando voces" in panel["stage"].value
+
+
+def test_filter_pagination_explicit_selection_and_drive_destination(tmp_path, monkeypatch):
+    import IPython.display
+
+    import meika_vox.runtime
+
+    monkeypatch.setattr(IPython.display, "display", lambda *args: None)
+    monkeypatch.setattr(
+        meika_vox.runtime, "inspect_runtime",
+        lambda: SimpleNamespace(asr_ready=True, cuda_available=True),
+    )
+    originals = tmp_path / "Audios"
+    originals.mkdir()
+    for i in range(85):
+        (originals / f"entrevista_{i:03d}.wav").write_bytes(b"sample")
+    target_base = tmp_path / "Estudios"
+    target_base.mkdir()
+
+    panel = ui.build_panel(ROOT, tmp_path)
+    panel["folders"].value = str(originals)
+    assert len(panel["choices"].children) == 40
+    assert not panel["recordings"].value
+    assert panel["start"].disabled
+    panel["select_visible"].click()
+    assert len(panel["recordings"].value) == 40
+    panel["page_next"].click()
+    assert len(panel["choices"].children) == 40
+    panel["select_visible"].click()
+    assert len(panel["recordings"].value) == 80
+    panel["audio_filter"].value = "entrevista_084"
+    assert len(panel["choices"].children) == 1
+    panel["select_visible"].click()
+    assert len(panel["recordings"].value) == 81
+    assert "81 audios" in panel["plan"].value
+    panel["clear_basket"].click()
+    assert not panel["recordings"].value
+    assert panel["start"].disabled
+
+    # Reusing the output directory must not silently select the entire Drive.
+    panel["audio_filter"].value = ""
+    panel["select_visible"].click()
+    assert len(panel["recordings"].value) == 40
+    # The default destination remains compatible with existing MEIKA_Vox results.
+    assert panel["state"]["output_base"] == tmp_path / "MEIKA_Vox" / "Proyectos"
+    # Navigate from the root of Drive and select an existing target.
+    panel["destination_use"].click()
+    assert panel["state"]["output_base"] == tmp_path / "MEIKA_Vox" / "Proyectos"
+    panel["destination_new_name"].value = "Nuevo estudio"
+    panel["destination_create"].click()
+    assert (tmp_path / "MEIKA_Vox" / "Proyectos" / "Nuevo estudio").is_dir()
+    # A nested technical results folder cannot be selected as another base.
+    assert panel["state"]["output_base"] == tmp_path / "MEIKA_Vox" / "Proyectos"
