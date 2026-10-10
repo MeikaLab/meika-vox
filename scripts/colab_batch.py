@@ -357,7 +357,28 @@ def process_folder(
     except (OSError, ValueError):
         state = {}
     settings = configuration_key(command, configuration)
-    report = {"completed": [], "skipped": [], "failed": []}
+    report = {"completed": [], "skipped": [], "failed": [], "pending": len(audios),
+              "status": "in_progress", "archive_error": None}
+
+    def persist_report(final: bool = False) -> None:
+        """Write progress atomically so a Colab disconnect retains the last outcome."""
+        processed = sum(len(report[k]) for k in ("completed", "skipped", "failed"))
+        report["pending"] = max(0, len(audios) - processed)
+        if final:
+            if report["failed"] or report["pending"]:
+                report["status"] = "incomplete"
+            elif report["archive_error"]:
+                report["status"] = "texts_saved_zip_failed"
+            else:
+                report["status"] = "completed"
+        path = output / "batch_last_report.json"
+        temporary = path.with_suffix(".json.tmp")
+        temporary.write_text(
+            json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        temporary.replace(path)
+
+    persist_report()
     # Scan archived manifests once per batch instead of traversing the whole
     # Drive output tree for every recording after an interrupted cache write.
     recovery_index: dict[tuple[str, str], list[Path]] | None = None
@@ -508,21 +529,30 @@ def process_folder(
             emit(f"Texto guardado: {text}")
             notify("completed", index, audio)
         except Exception as exc:
-            report["failed"].append({"audio": str(audio), "error": str(exc)})
-            emit(f"PENDIENTE: {exc}")
+            from meika_vox.redact import redact
+
+            error = redact(f"{type(exc).__name__}: {exc}")[:1200]
+            report["failed"].append({"audio": str(audio), "error": error})
+            emit(f"PENDIENTE: {error}")
             notify("failed", index, audio)
-    report["pending"] = len(audios) - sum(len(report[k]) for k in
-                                          ("completed", "skipped", "failed"))
-    report_path = output / "batch_last_report.json"
-    report_tmp = report_path.with_suffix(".tmp")
-    report_tmp.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    report_tmp.replace(report_path)
+        finally:
+            # A report remains readable even if the next audio crashes the VM.
+            try:
+                persist_report()
+            except OSError as exc:
+                emit(f"No se pudo guardar el reporte del lote: {type(exc).__name__}")
     texts = [Path(item["text"]) for key in ("completed", "skipped") for item in report[key]]
     if texts:
-        make_text_archive(output, texts)
+        try:
+            make_text_archive(output, texts)
+        except (OSError, ValueError, zipfile.BadZipFile) as exc:
+            report["archive_error"] = type(exc).__name__
+            emit("Los TXT se guardaron, pero no se pudo crear el ZIP. "
+                 "Puedes reintentar sin volver a transcribir.")
+    persist_report(final=True)
     notify("finished", len(audios))
     emit(
         f"Terminados: {len(report['completed'])} · ya listos: {len(report['skipped'])}"
-        f" · pendientes: {len(report['failed'])}"
+        f" · fallidos: {len(report['failed'])} · pendientes: {report['pending']}"
     )
     return report
