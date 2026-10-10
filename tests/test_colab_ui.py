@@ -60,6 +60,9 @@ def test_cpu_consent_scoped_selection_and_batch_save(tmp_path, monkeypatch):
     panel["folders"].value = str(folder)
     assert panel["folder"].value == "Entrevistas"
     assert panel["project"].value == "Entrevistas"
+    assert not panel["recordings"].value  # Explicit selection: no silent select-all.
+    assert len(panel["choices"].children) == 1
+    panel["select_visible"].click()
     assert len(panel["recordings"].value) == 1
     assert "1 audios" in panel["plan"].value
     assert "Transcripciones" in panel["plan"].value
@@ -176,29 +179,33 @@ def test_folder_selection_trailing_spaces_nested_audio_and_empty_folder(tmp_path
     panel["folders"].value = str(recordings)
     assert panel["folder"].value == "Audios para transcribir "
     assert panel["state"]["folder"] == recordings
-    assert len(panel["recordings"].value) == 2
+    assert not panel["recordings"].value
+    assert len(panel["choices"].children) == 2
     assert "2 audios" in panel["count"].value
+    panel["select_visible"].click()
+    assert len(panel["recordings"].value) == 2
     assert panel["start"].description == "Transcribir 2 audios"
     assert not panel["start"].disabled
     panel["recursive"].value = False
-    assert len(panel["recordings"].value) == 1
+    assert len(panel["recordings"].value) == 2
+    assert len(panel["choices"].children) == 1
     assert panel["folders"].options[-1][1] == str(nested)
     panel["folders"].value = str(nested)
-    assert len(panel["recordings"].value) == 1
+    assert len(panel["recordings"].value) == 2
     assert panel["folder"].value.endswith("Reunión vecinal")
     panel["up"].click()
     assert panel["state"]["folder"] == recordings
     panel["up"].click()
     assert panel["state"]["folder"] == tmp_path
     panel["folders"].value = str(empty)
-    assert not panel["recordings"].value
-    assert panel["start"].disabled
+    assert len(panel["recordings"].value) == 2  # Changing folder retains basket.
+    assert not panel["start"].disabled
     assert "minuta.pdf" in panel["count"].value
     assert "No encontré audios" in panel["count"].value
     # A manual path uses the same navigation and preserves exact folder names.
     panel["folder"].value = "Audios para transcribir "
     panel["open_path"].click()
-    assert len(panel["recordings"].value) == 1
+    assert len(panel["recordings"].value) == 2
     assert panel["state"]["folder"] == recordings
 
 
@@ -225,11 +232,15 @@ def test_find_and_choose_folder_with_audio(tmp_path, monkeypatch):
     assert str(recording) in results.values()
     panel["found_folders"].value = str(recording)
     assert panel["state"]["folder"] == recording
-    assert len(panel["recordings"].value) == 1
+    assert len(panel["choices"].children) == 1
+    assert not panel["recordings"].value
+    panel["select_visible"].click()
     assert not panel["start"].disabled
     panel["found_folders"].value = str(tmp_path)
-    assert len(panel["recordings"].value) == 1  # Direct root audio only, not nested recordings.
-    assert panel["recordings"].value == (str(tmp_path / "audio_suelto.m4a"),)
+    assert len(panel["choices"].children) == 1  # Root direct audio only.
+    assert len(panel["recordings"].value) == 1
+    panel["select_visible"].click()
+    assert len(panel["recordings"].value) == 2  # Basket keeps both source folders.
     assert not panel["start"].disabled
 
 
