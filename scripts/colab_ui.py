@@ -200,8 +200,18 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             raise ValueError("Elige la carpeta de grabaciones, no la de resultados.")
         return path
 
+    def sync_basket():
+        chosen = sorted(state["selected_audios"])
+        recordings.options = [(str(Path(p).relative_to(root)), p) for p in chosen]
+        recordings.value = tuple(chosen)
+        basket.options = [(str(Path(p).relative_to(root)), p) for p in chosen]
+        basket_summary.value = f"<b>{len(chosen)} audios seleccionados</b> para procesar."
+        ready()
+
     def clear_selection():
-        recordings.options = []
+        # Navigation clears the candidate list, not the multi-folder basket.
+        state["audio_candidates"] = []
+        state["page"] = 0
         choices.children = ()
         state["selected_folder"] = None
         state["failed"] = []
@@ -213,6 +223,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         activity.layout.display = "none"
         results.value = preview.value = results_table.value = ""
         plan.value = ""
+        sync_basket()
 
     def update_plan():
         # Avoid stat() calls against every Drive audio whenever a widget changes.
@@ -229,8 +240,9 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         plan.value = (
             f"<b>Antes de comenzar:</b> {selected_count} audios · "
             f"{escape(hardware)} · modalidad {escape(mode.label)} · "
-            f"Mi unidad / MEIKA_Vox / Proyectos / {escape(destination)} / Transcripciones. "
-            "Cada audio terminado se guarda inmediatamente."
+            f"Destino: {escape(str(state['output_base'].relative_to(root)))} / "
+            f"{escape(destination)} / Transcripciones. "
+            "Los originales permanecen en sus carpetas y los resultados se guardan por proyecto."
         )
 
     def render_results(report):
@@ -269,24 +281,73 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         start.description = (f"Transcribir {selected_count} audios"
                              if selected_count else "Transcribir")
         selection_help.value = ""
-        selection.layout.display = "" if recordings.options else "none"
+        selection.layout.display = "" if state["audio_candidates"] else "none"
         if state["finding"]:
             start_help.value = "Buscando carpetas; puedes detener la búsqueda."
         elif state["busy"]:
             start_help.value = "Procesando; cada audio terminado se guarda en Drive."
 
-    def choose(_):
-        recordings.value = tuple(box.audio_path for box in choices.children if box.value)
+    def choose(change):
+        if state["busy"] or state["finding"]:
+            return
+        box = change["owner"]
+        if change["new"]:
+            state["selected_audios"].add(box.audio_path)
+        else:
+            state["selected_audios"].discard(box.audio_path)
+        sync_basket()
 
-    def make_choices(found, path):
+    def filtered_candidates():
+        query = audio_filter.value.casefold().strip()
+        base = state["selected_folder"]
+        return [p for p in state["audio_candidates"]
+                if not query or query in str(p.relative_to(base)).casefold()]
+
+    def make_choices(found=None, path=None):
+        items = filtered_candidates()
+        pages = max(1, (len(items) + 39) // 40)
+        state["page"] = min(state["page"], pages - 1)
+        start_index = state["page"] * 40
         boxes = []
-        for audio in found:
-            box = w.Checkbox(value=True, description=str(audio.relative_to(path)),
-                             indent=False, layout=w.Layout(width="95%"))
+        for audio in items[start_index:start_index + 40]:
+            box = w.Checkbox(
+                value=str(audio) in state["selected_audios"],
+                description=str(audio.relative_to(state["selected_folder"])),
+                indent=False, layout=w.Layout(width="95%"),
+            )
             box.audio_path = str(audio)
             box.observe(choose, names="value")
             boxes.append(box)
         choices.children = tuple(boxes)
+        page_previous.disabled = state["page"] == 0
+        page_next.disabled = state["page"] >= pages - 1
+        page_status.value = (
+            f"{len(items)} coincidencias · página {state['page'] + 1}/{pages}"
+        )
+        selection.layout.display = "" if state["audio_candidates"] else "none"
+
+    def change_page(delta):
+        state["page"] += delta
+        make_choices()
+
+    def choose_visible(included):
+        for box in choices.children:
+            if included:
+                state["selected_audios"].add(box.audio_path)
+            else:
+                state["selected_audios"].discard(box.audio_path)
+        make_choices()
+        sync_basket()
+
+    def remove_basket(_):
+        state["selected_audios"].difference_update(basket.value)
+        make_choices()
+        sync_basket()
+
+    def clear_basket_selection(_):
+        state["selected_audios"].clear()
+        make_choices()
+        sync_basket()
 
     def discover(_=None):
         if state["busy"] or state["finding"]:
@@ -303,13 +364,16 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             scan.disabled = True
             found = batch.discover_audio(path, exclude=output_root,
                                          recursive=recursive.value and path != root)
-            recordings.options = [(str(p.relative_to(path)), str(p)) for p in found]
-            recordings.value = tuple(str(p) for p in found)
+            state["audio_candidates"] = found
             state["selected_folder"] = path
-            make_choices(found, path)
+            state["page"] = 0
+            audio_filter.value = ""
+            make_choices()
+            sync_basket()
             if found:
                 count.value = (f"<b>{len(found)} audios encontrados</b> · "
-                               "Todos incluidos; puedes desmarcar algunos abajo.")
+                               "Marca los archivos que quieras agregar al lote. "
+                               "Puedes cambiar de carpeta sin perder los elegidos.")
             else:
                 files = sorted(p.name for p in path.iterdir() if p.is_file())
                 samples = ", ".join(files[:5])
