@@ -1067,6 +1067,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             "remove_from_basket": remove_from_basket, "clear_basket": clear_basket,
             "page_next": page_next, "page_previous": page_previous,
             "destination_options": destination_options, "destination_use": destination_use,
+            "destination_enter": destination_enter, "destination_back": destination_back,
             "destination_create": destination_create,
             "destination_new_name": destination_new_name,
             "destination_location": destination_location}
