@@ -588,24 +588,23 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                     except (OSError, ValueError):
                         note("No se pudo guardar el diagnóstico en Drive.")
 
-                def runner(audio, destination):
+                def runner_with_checksum(audio, destination, expected_checksum):
                     try:
-                        return run_one(audio, destination)
+                        return run_one(audio, destination, expected_checksum)
                     except Exception as exc:
                         save_engine_log(exc, audio)
                         raise
 
-                def run_one(audio, destination):
+                def run_one(audio, destination, expected_checksum):
                     update_stage(f"Copiando temporalmente {audio.name}")
                     with tempfile.TemporaryDirectory(prefix="meika-vox-") as scratch:
                         local = Path(scratch) / audio.name
                         shutil.copyfile(audio, local)
-                        local_checksum = batch.fingerprint(local)
                         update_stage("Comprobando audio y calidad")
                         bundle = run_transcription(local, project_id, provider, glossary=glossary)
                         bundle.asset.source_path = str(audio)
                         bundle.asset.source_filename = audio.name
-                        if local_checksum != bundle.asset.checksum_sha256:
+                        if expected_checksum != bundle.asset.checksum_sha256:
                             raise RuntimeError("La copia del audio cambió durante el proceso.")
                         update_stage("Guardando y verificando resultados en Drive")
                         local_run = write_bundle(bundle, Path(scratch) / "resultado")
@@ -629,7 +628,8 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                         update_stage(f"Audio {info['index']} de {info['total']}: {info['audio']}")
 
                 report = batch.process_folder(
-                    path, output, command, selected=selected, runner=runner,
+                    path, output, command, selected=selected,
+                    runner_with_checksum=runner_with_checksum,
                     configuration="user-panel-v1", force=settings["force"], emit=note,
                     on_progress=on_progress, should_stop=stop_event.is_set,
                 )
