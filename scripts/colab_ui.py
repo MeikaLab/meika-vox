@@ -74,15 +74,46 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     search_status = w.HTML()
     search_stop = threading.Event()
     recursive = w.Checkbox(value=True, description="Incluir subcarpetas")
+    # Multi-folder basket: a click explicitly includes a recording; never process
+    # everything by default. A page contains at most 40 checkbox widgets.
     recordings = w.SelectMultiple(options=[], description="Audios:", rows=7)
+    recordings.layout.display = "none"  # Internal shared selection for batch callers.
+    audio_filter = w.Text(description="Filtrar audios:", placeholder="Buscar por nombre o carpeta")
+    select_visible = w.Button(description="Seleccionar los visibles")
+    deselect_visible = w.Button(description="Quitar los visibles")
+    page_previous = w.Button(description="← Anteriores")
+    page_next = w.Button(description="Siguientes →")
+    page_status = w.HTML()
     choices = w.VBox()
-    selection = w.Accordion(children=[choices])
-    selection.set_title(0, "Elegir algunos audios (opcional)")
-    selection.selected_index = None
-    recordings.layout.display = "none"
+    selection = w.VBox([
+        audio_filter, w.HBox([select_visible, deselect_visible]),
+        w.HBox([page_previous, page_status, page_next]), choices,
+    ])
+    selection.layout.display = "none"
+    basket = w.SelectMultiple(options=[], description="Elegidos:", rows=5,
+                              layout=w.Layout(width="95%"))
+    remove_from_basket = w.Button(description="Quitar marcados del lote")
+    clear_basket = w.Button(description="Vaciar selección")
+    basket_summary = w.HTML("0 audios seleccionados")
+    basket_panel = w.VBox([basket_summary, basket,
+                            w.HBox([remove_from_basket, clear_basket])])
     selection_help = w.HTML()
     location = w.HTML()
     start_help = w.HTML()
+    # Select an existing Drive folder as the parent of the project directory.
+    # Results always follow <chosen>/<project>/Transcripciones, preserving
+    # project-scoped resume hashes and technical exports.
+    destination_options = w.Dropdown(description="Abrir en Drive:",
+                                      options=[("Elige carpeta…", "")])
+    destination_enter = w.Button(description="Abrir carpeta")
+    destination_back = w.Button(description="Subir nivel")
+    destination_use = w.Button(description="Guardar aquí", button_style="info")
+    destination_new_name = w.Text(description="Carpeta nueva:",
+                                  placeholder="Nombre (opcional)")
+    destination_create = w.Button(description="Crear y elegir")
+    destination_status = w.HTML()
+    destination_location = w.HTML()
+
     preview = w.HTML()
     count = w.HTML("Elige una carpeta específica para buscar grabaciones.")
     gpu = runtime.cuda_available
@@ -144,12 +175,18 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     logs.set_title(0, "Detalles técnicos")
     logs.selected_index = None
     state = {"busy": False, "finding": False, "folder": root, "selected_folder": None, "failed": [],
-             "archive": None, "stage": "Esperando", "since": 0.0, "audio_since": 0.0}
+             "archive": None, "stage": "Esperando", "since": 0.0, "audio_since": 0.0,
+             "audio_candidates": [], "selected_audios": set(), "page": 0,
+             "output_base": output_root}
     stop_event = threading.Event()
     done_event = threading.Event()
     controls = [project_input, language, folder, folders, up, enter, scan, recursive,
                 recordings, cpu_consent, mode, diarize, check, glossary_input, force,
-                find, found_folders, speaker_count]
+                find, found_folders, speaker_count, audio_filter, select_visible,
+                deselect_visible, page_previous, page_next, basket,
+                remove_from_basket, clear_basket, destination_options,
+                destination_enter, destination_back, destination_use,
+                destination_new_name, destination_create]
 
     def note(message):
         details.append_stdout(redact(message) + "\n")
@@ -162,8 +199,18 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             raise ValueError("Elige la carpeta de grabaciones, no la de resultados.")
         return path
 
+    def sync_basket():
+        chosen = sorted(state["selected_audios"])
+        recordings.options = [(str(Path(p).relative_to(root)), p) for p in chosen]
+        recordings.value = tuple(chosen)
+        basket.options = [(str(Path(p).relative_to(root)), p) for p in chosen]
+        basket_summary.value = f"<b>{len(chosen)} audios seleccionados</b> para procesar."
+        ready()
+
     def clear_selection():
-        recordings.options = []
+        # Navigation clears the candidate list, not the multi-folder basket.
+        state["audio_candidates"] = []
+        state["page"] = 0
         choices.children = ()
         state["selected_folder"] = None
         state["failed"] = []
@@ -175,6 +222,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         activity.layout.display = "none"
         results.value = preview.value = results_table.value = ""
         plan.value = ""
+        sync_basket()
 
     def update_plan():
         # Avoid stat() calls against every Drive audio whenever a widget changes.
@@ -191,9 +239,79 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         plan.value = (
             f"<b>Antes de comenzar:</b> {selected_count} audios · "
             f"{escape(hardware)} · modalidad {escape(mode.label)} · "
-            f"Mi unidad / MEIKA_Vox / Proyectos / {escape(destination)} / Transcripciones. "
-            "Cada audio terminado se guarda inmediatamente."
+            f"Destino: {escape(str(state['output_base'].relative_to(root)))} / "
+            f"{escape(destination)} / Transcripciones. "
+            "Los originales permanecen en sus carpetas y los resultados se guardan por proyecto."
         )
+
+    def browse_destination(path):
+        path = path.resolve()
+        if not path.is_relative_to(root) or not path.is_dir():
+            raise ValueError("El destino debe ser una carpeta existente de Mi unidad.")
+        if path != output_root and path.is_relative_to(output_root):
+            raise ValueError("No elijas una subcarpeta técnica como destino.")
+        state["destination_browse"] = path
+        child_folders = sorted(
+            (p for p in path.iterdir() if p.is_dir()
+             and p.resolve().is_relative_to(root)),
+            key=lambda p: p.name.casefold(),
+        )
+        destination_options.options = [("Elige una subcarpeta…", "")] + [
+            (p.name, str(p)) for p in child_folders
+        ]
+        destination_options.value = ""
+        destination_back.disabled = path == root
+        destination_location.value = (
+            f"Explorando: Mi unidad / {escape(str(path.relative_to(root)))}"
+        )
+
+    def destination_open(_):
+        if not destination_options.value:
+            return
+        try:
+            browse_destination(Path(destination_options.value))
+        except (OSError, ValueError) as exc:
+            destination_status.value = escape(str(exc))
+
+    def destination_up(_):
+        browse_destination(state["destination_browse"].parent)
+
+    def destination_select(_):
+        path = state["destination_browse"]
+        # The project subdirectory remains isolated for resume and exports.
+        state["output_base"] = path
+        destination_status.value = (
+            "<b>Destino elegido:</b> Mi unidad / "
+            + escape(str(path.relative_to(root)))
+        )
+        ready()
+
+    def destination_create_folder(_):
+        if state["destination_browse"].is_relative_to(output_root):
+            destination_status.value = (
+                "Sube al nivel Mi unidad u otra carpeta antes de crear el destino."
+            )
+            return
+        name = destination_new_name.value.strip()
+        if not name or name in {".", ".."} or "/" in name or "\\\\" in name:
+            destination_status.value = "Escribe un nombre de carpeta válido."
+            return
+        if len(name) > 80 or any(ord(char) < 32 for char in name):
+            destination_status.value = "Nombre inválido o demasiado largo."
+            return
+        target = state["destination_browse"] / name
+        if target.exists() and not target.is_dir():
+            destination_status.value = "Ya existe un archivo con ese nombre."
+            return
+        try:
+            target.mkdir(exist_ok=True)
+            browse_destination(target)
+            destination_select(None)
+            destination_new_name.value = ""
+        except OSError as exc:
+            destination_status.value = (
+                "No se pudo crear la carpeta: " + escape(type(exc).__name__)
+            )
 
     def render_results(report):
         rows = []
@@ -228,27 +346,77 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         start.disabled = state["busy"] or state["finding"] or bool(reason)
         start_help.value = escape(reason)
         selected_count = len(recordings.value)
-        start.description = (f"Transcribir {selected_count} audios"
-                             if selected_count else "Transcribir")
+        if not state["busy"]:
+            start.description = (f"Transcribir {selected_count} audios"
+                                 if selected_count else "Transcribir")
         selection_help.value = ""
-        selection.layout.display = "" if recordings.options else "none"
+        selection.layout.display = "" if state["audio_candidates"] else "none"
         if state["finding"]:
             start_help.value = "Buscando carpetas; puedes detener la búsqueda."
         elif state["busy"]:
             start_help.value = "Procesando; cada audio terminado se guarda en Drive."
 
-    def choose(_):
-        recordings.value = tuple(box.audio_path for box in choices.children if box.value)
+    def choose(change):
+        if state["busy"] or state["finding"]:
+            return
+        box = change["owner"]
+        if change["new"]:
+            state["selected_audios"].add(box.audio_path)
+        else:
+            state["selected_audios"].discard(box.audio_path)
+        sync_basket()
 
-    def make_choices(found, path):
+    def filtered_candidates():
+        query = audio_filter.value.casefold().strip()
+        base = state["selected_folder"]
+        return [p for p in state["audio_candidates"]
+                if not query or query in str(p.relative_to(base)).casefold()]
+
+    def make_choices(found=None, path=None):
+        items = filtered_candidates()
+        pages = max(1, (len(items) + 39) // 40)
+        state["page"] = min(state["page"], pages - 1)
+        start_index = state["page"] * 40
         boxes = []
-        for audio in found:
-            box = w.Checkbox(value=True, description=str(audio.relative_to(path)),
-                             indent=False, layout=w.Layout(width="95%"))
+        for audio in items[start_index:start_index + 40]:
+            box = w.Checkbox(
+                value=str(audio) in state["selected_audios"],
+                description=str(audio.relative_to(state["selected_folder"])),
+                indent=False, layout=w.Layout(width="95%"),
+            )
             box.audio_path = str(audio)
             box.observe(choose, names="value")
             boxes.append(box)
         choices.children = tuple(boxes)
+        page_previous.disabled = state["page"] == 0
+        page_next.disabled = state["page"] >= pages - 1
+        page_status.value = (
+            f"{len(items)} coincidencias · página {state['page'] + 1}/{pages}"
+        )
+        selection.layout.display = "" if state["audio_candidates"] else "none"
+
+    def change_page(delta):
+        state["page"] += delta
+        make_choices()
+
+    def choose_visible(included):
+        for box in choices.children:
+            if included:
+                state["selected_audios"].add(box.audio_path)
+            else:
+                state["selected_audios"].discard(box.audio_path)
+        make_choices()
+        sync_basket()
+
+    def remove_basket(_):
+        state["selected_audios"].difference_update(basket.value)
+        make_choices()
+        sync_basket()
+
+    def clear_basket_selection(_):
+        state["selected_audios"].clear()
+        make_choices()
+        sync_basket()
 
     def discover(_=None):
         if state["busy"] or state["finding"]:
@@ -265,13 +433,16 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             scan.disabled = True
             found = batch.discover_audio(path, exclude=output_root,
                                          recursive=recursive.value and path != root)
-            recordings.options = [(str(p.relative_to(path)), str(p)) for p in found]
-            recordings.value = tuple(str(p) for p in found)
+            state["audio_candidates"] = found
             state["selected_folder"] = path
-            make_choices(found, path)
+            state["page"] = 0
+            audio_filter.value = ""
+            make_choices()
+            sync_basket()
             if found:
                 count.value = (f"<b>{len(found)} audios encontrados</b> · "
-                               "Todos incluidos; puedes desmarcar algunos abajo.")
+                               "Marca los archivos que quieras agregar al lote. "
+                               "Puedes cambiar de carpeta sin perder los elegidos.")
             else:
                 files = sorted(p.name for p in path.iterdir() if p.is_file())
                 samples = ", ".join(files[:5])
@@ -307,7 +478,9 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             folders.disabled = not children
             location.value = f"<b>Carpeta elegida:</b> Mi unidad / {escape(folder.value)}"
             up.disabled = path == root
-            if not project_input.value.strip() or project_input.value == state.get("auto_project"):
+            if (not state["selected_audios"] and (
+                    not project_input.value.strip()
+                    or project_input.value == state.get("auto_project"))):
                 automatic = path.name if path != root else "Audios de Mi unidad"
                 project_input.value = automatic
                 state["auto_project"] = automatic
@@ -460,7 +633,8 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         # Freeze settings before a worker starts; never read changing widget values mid-run.
         settings = {"project": project_input.value.strip() or state["folder"].name,
                     "language": language.value,
-                    "folder": folder.value, "diarize": diarize.value,
+                    "folder": folder.value,
+                    "output_base": str(state["output_base"]), "diarize": diarize.value,
                     "backend": "sherpa" if mode.value == "sherpa" else "pyannote",
                     "speakers": speaker_count.value or None,
                     "force": force.value, "glossary": glossary_input.value.strip()}
@@ -539,8 +713,11 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                 if access_only:
                     update_stage("Acceso comprobado. Puedes transcribir.")
                     return
-                path = safe_folder(settings["folder"])
-                output = output_root / project_id / "Transcripciones"
+                path = root  # Selected audios may belong to several source folders.
+                base = Path(settings["output_base"]).resolve()
+                if not base.is_relative_to(root) or not base.is_dir():
+                    raise ValueError("Elige un destino válido dentro de Mi unidad.")
+                output = base / project_id / "Transcripciones"
                 glossary = None
                 command = ["meika-vox", "--project-id", project_id, "--language",
                            settings["language"], "--model", model]
@@ -557,7 +734,8 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                     command += ["--glossary", str(glossary_path)]
                 preferences_tmp = preferences.with_suffix(".tmp")
                 preferences_tmp.write_text(json.dumps({k: settings[k] for k in
-                                           ("project", "language", "folder")}), encoding="utf-8")
+                                           ("project", "language", "folder", "output_base")}),
+                                           encoding="utf-8")
                 preferences_tmp.replace(preferences)
 
                 def save_engine_log(exc, audio=None):
@@ -787,6 +965,18 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         }[selected_mode]
         ready()
 
+    audio_filter.observe(lambda _: (state.__setitem__("page", 0),
+                                    make_choices()), names="value")
+    select_visible.on_click(lambda _: choose_visible(True))
+    deselect_visible.on_click(lambda _: choose_visible(False))
+    page_previous.on_click(lambda _: change_page(-1))
+    page_next.on_click(lambda _: change_page(1))
+    remove_from_basket.on_click(remove_basket)
+    clear_basket.on_click(clear_basket_selection)
+    destination_enter.on_click(destination_open)
+    destination_back.on_click(destination_up)
+    destination_use.on_click(destination_select)
+    destination_create.on_click(destination_create_folder)
     mode.observe(change_mode, names="value")
     change_mode({"new": mode.value})
     find.on_click(search_folders)
@@ -834,13 +1024,30 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         w.HTML("<div style='background:#f1f7f6;padding:16px;border-radius:10px;color:#1a4146'>"
                "<h2>MEIKA Vox</h2>Elige tus audios, transcribe y descarga los textos.</div>"),
         location, folders, up, count, scan, find, cancel_find, search_status, found_folders,
-        manual, selection, recordings,
+        manual,
+        w.HTML("<h3>1. Selecciona los audios</h3>"),
+        selection, basket_panel, recordings,
+        w.HTML("<h3>2. Elige la carpeta de destino en Drive</h3>"),
+        destination_location, destination_options,
+        w.HBox([destination_enter, destination_back, destination_use]),
+        w.HBox([destination_new_name, destination_create]), destination_status,
         project_input, motor, cpu_consent,
         w.HTML("<b>¿Cómo quieres transcribir?</b>"), mode, mode_help,
         speaker_help, speaker_setup, speaker_options, advanced, plan, start_help, start, activity,
         w.HTML("Español por defecto. Si Colab se desconecta, abre de nuevo el panel y elige "
                "el mismo proyecto. Los audios ya guardados se conservan."),
     ]))
+    try:
+        last_output = Path(saved.get("output_base", str(output_root))).resolve()
+        browse_destination(last_output if last_output.is_dir()
+                           and last_output.is_relative_to(root)
+                           and (last_output == output_root
+                                or not last_output.is_relative_to(output_root))
+                           else root)
+        destination_select(None)
+    except (OSError, ValueError):
+        browse_destination(root)
+        destination_select(None)
     try:
         browse(safe_folder(saved.get("folder", "")))
     except (OSError, ValueError):
@@ -856,4 +1063,13 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             "cancel_find": cancel_find, "mode": mode, "mode_help": mode_help,
             "speaker_setup": speaker_setup, "speaker_count": speaker_count,
             "refresh_status": refresh_status, "plan": plan, "results_table": results_table,
-            "diagnostic": diagnostic, "diagnostic_status": diagnostic_status}
+            "diagnostic": diagnostic, "diagnostic_status": diagnostic_status,
+            "audio_filter": audio_filter, "basket": basket,
+            "select_visible": select_visible, "deselect_visible": deselect_visible,
+            "remove_from_basket": remove_from_basket, "clear_basket": clear_basket,
+            "page_next": page_next, "page_previous": page_previous,
+            "destination_options": destination_options, "destination_use": destination_use,
+            "destination_enter": destination_enter, "destination_back": destination_back,
+            "destination_create": destination_create,
+            "destination_new_name": destination_new_name,
+            "destination_location": destination_location}
