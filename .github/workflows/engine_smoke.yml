@@ -46,6 +46,14 @@ jobs:
           print("transformers:", transformers.__version__)
           print("whisperx imported:", whisperx.__file__)
           PY
+      - name: Prepare Silero VAD hub cache using Git
+        # torch.hub otherwise downloads an anonymous GitHub archive, which can
+        # return HTTP 403 rate-limit errors on shared Actions runners.
+        run: |
+          mkdir -p "$HOME/.cache/torch/hub"
+          git clone --quiet --depth 1 --branch master \
+            https://github.com/snakers4/silero-vad.git \
+            "$HOME/.cache/torch/hub/snakers4_silero-vad_master"
       - name: Produce Spanish speech sample
         run: |
           espeak-ng -v es -s 130 -w sample.wav "Buenas tardes. Este encuentro comunitario trata sobre salud y territorio. Las personas participan en la planificación de su comuna."
