@@ -132,15 +132,19 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     stage = w.HTML("Esperando selección.")
     refresh_status = w.Button(description="Actualizar estado")
     summary = w.HTML()
+    plan = w.HTML()
+    results_table = w.HTML()
     results = w.HTML()
     download = w.Button(description="Descargar textos ZIP", disabled=True)
     retry = w.Button(description="Reintentar pendientes", disabled=True)
     details = w.Output()
-    logs = w.Accordion(children=[details])
+    diagnostic = w.Button(description="Guardar diagnóstico en Drive")
+    diagnostic_status = w.HTML()
+    logs = w.Accordion(children=[w.VBox([diagnostic, diagnostic_status, details])])
     logs.set_title(0, "Detalles técnicos")
     logs.selected_index = None
     state = {"busy": False, "finding": False, "folder": root, "selected_folder": None, "failed": [],
-             "archive": None, "stage": "Esperando", "since": 0.0}
+             "archive": None, "stage": "Esperando", "since": 0.0, "audio_since": 0.0}
     stop_event = threading.Event()
     done_event = threading.Event()
     controls = [project_input, language, folder, folders, up, enter, scan, recursive,
@@ -169,9 +173,52 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         download.disabled = True
         download.layout.display = "none"
         activity.layout.display = "none"
-        results.value = preview.value = ""
+        results.value = preview.value = results_table.value = ""
+        plan.value = ""
+
+    def update_plan():
+        # Avoid stat() calls against every Drive audio whenever a widget changes.
+        selected_count = len(recordings.value)
+        if not selected_count:
+            plan.value = ""
+            return
+        project = project_input.value.strip() or state["folder"].name
+        try:
+            destination = project_slug(project)
+        except ValueError:
+            destination = "Escribe un nombre de proyecto"
+        hardware = "GPU · WhisperX large-v3" if gpu else "CPU · WhisperX small"
+        plan.value = (
+            f"<b>Antes de comenzar:</b> {selected_count} audios · "
+            f"{escape(hardware)} · modalidad {escape(mode.label)} · "
+            f"Mi unidad / MEIKA_Vox / Proyectos / {escape(destination)} / Transcripciones. "
+            "Cada audio terminado se guarda inmediatamente."
+        )
+
+    def render_results(report):
+        rows = []
+        for key, label in (("completed", "Guardado"), ("skipped", "Ya existía"),
+                           ("failed", "Con error")):
+            for item in report[key]:
+                audio = Path(item["audio"]).name
+                hint = ("Reintentar y revisar diagnóstico" if key == "failed"
+                        else "Con observaciones" if item.get("warnings")
+                        else "Texto listo para revisar")
+                rows.append((audio, label, hint))
+        if not rows:
+            return ""
+        body = "".join(
+            "<tr>" + "".join(
+                f"<td style='padding:6px;border-bottom:1px solid #ddd'>{escape(v)}</td>"
+                for v in row
+            ) + "</tr>" for row in rows
+        )
+        return ("<div style='overflow-x:auto'><table style='width:100%;text-align:left'>"
+                "<tr><th>Audio</th><th>Estado</th><th>Observación</th></tr>"
+                f"{body}</table></div>")
 
     def ready(*_):
+        update_plan()
         reason = ""
         if not recordings.value:
             reason = "Selecciona al menos un audio."
@@ -379,6 +426,9 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         elapsed = max(0, int(time.monotonic() - state["since"])) if state["since"] else 0
         stage.value = (f"{escape(state['stage'])} · Tiempo del lote: "
                        f"{elapsed // 60:02d}:{elapsed % 60:02d}")
+        if state["busy"] and state["audio_since"]:
+            elapsed_audio = int(time.monotonic() - state["audio_since"])
+            stage.value += f" · Audio actual: {elapsed_audio // 60:02d}:{elapsed_audio % 60:02d}"
         if state["busy"]:
             quiet = int(time.monotonic() - state.get("last_stage", state["since"]))
             if quiet >= 60:
@@ -421,6 +471,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             speaker_status.value = "Comprobando acceso; la primera descarga puede tardar…"
         state["busy"] = True
         state["since"] = time.monotonic()
+        state["audio_since"] = 0.0
         update_stage("Iniciando; cada audio terminado se guarda en Drive")
         done_event.clear()
         stop_event.clear()
@@ -572,6 +623,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                                      f"{info['skipped']} ya existentes "
                                      f"· {info['failed']} con error")
                     if info["event"] == "started":
+                        state["audio_since"] = time.monotonic()
                         current_audio.value = (f"Audio {info['index']} de {info['total']}: "
                                                f"<b>{escape(info['audio'])}</b>")
                         update_stage(f"Audio {info['index']} de {info['total']}: {info['audio']}")
@@ -581,6 +633,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                     configuration="user-panel-v1", force=settings["force"], emit=note,
                     on_progress=on_progress, should_stop=stop_event.is_set,
                 )
+                results_table.value = render_results(report)
                 state["failed"] = [Path(i["audio"]) for i in report["failed"]]
                 reviewed = {i["audio"] for key in ("completed", "skipped", "failed")
                             for i in report[key]}
@@ -648,6 +701,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                     lock_handle.close()
                     done_event.set()
                 state["busy"] = False
+                state["audio_since"] = 0.0
                 for control in controls:
                     control.disabled = False
                 stop.disabled = True
@@ -666,6 +720,29 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             box.disabled = True
         threading.Thread(target=heartbeat, name="MEIKA_Vox_clock", daemon=True).start()
         threading.Thread(target=work, name="MEIKA_Vox_batch", daemon=True).start()
+
+    def save_diagnostic(_):
+        try:
+            location = output_root.parent / "Diagnosticos"
+            location.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+            target = location / f"diagnostico_{stamp}.txt"
+            # No full paths, tokens, environment variables or interview text.
+            message = "\\n".join([
+                f"Hora UTC: {stamp}",
+                f"Etapa: {state['stage']}",
+                f"GPU: {gpu}",
+                f"Modalidad: {mode.value}",
+                f"Audios seleccionados: {len(recordings.value)}",
+                "Para errores por audio: revisa Transcripciones/logs/",
+            ])
+            target.write_text(redact(message, [secret()]), encoding="utf-8")
+            diagnostic_status.value = (
+                "Diagnóstico guardado en Mi unidad / "
+                + escape(str(target.relative_to(root)))
+            )
+        except (OSError, ValueError):
+            diagnostic_status.value = "No se pudo guardar el diagnóstico en Drive."
 
     def start_batch(_):
         launch([Path(value) for value in recordings.value])
@@ -712,8 +789,11 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     recordings.observe(ready, names="value")
     cpu_consent.observe(ready, names="value")
     project_input.observe(ready, names="value")
+    language.observe(ready, names="value")
+    force.observe(ready, names="value")
     check.on_click(lambda _: launch([], access_only=True))
     refresh_status.on_click(render_status)
+    diagnostic.on_click(save_diagnostic)
     start.on_click(start_batch)
     stop.on_click(stop_after)
     retry.on_click(lambda _: launch(state["failed"], access_only=False))
@@ -724,7 +804,8 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
     manual.set_title(0, "Escribir una ruta (opcional)")
     manual.selected_index = None
     # Keep the chosen folder visible while working; no hidden wizard state.
-    activity = w.VBox([progress, current_audio, stage, refresh_status, summary, stop, results,
+    activity = w.VBox([progress, current_audio, stage, refresh_status, summary, stop,
+                       results_table, results,
                        download, retry, preview, logs])
     activity.layout.display = "none"
     for button in (scan, start, stop, download, retry, check, up, find, cancel_find):
@@ -743,7 +824,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         manual, selection, recordings,
         project_input, motor, cpu_consent,
         w.HTML("<b>¿Cómo quieres transcribir?</b>"), mode, mode_help,
-        speaker_help, speaker_setup, speaker_options, advanced, start_help, start, activity,
+        speaker_help, speaker_setup, speaker_options, advanced, plan, start_help, start, activity,
         w.HTML("Español por defecto. Si Colab se desconecta, abre de nuevo el panel y elige "
                "el mismo proyecto. Los audios ya guardados se conservan."),
     ]))
@@ -761,4 +842,5 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             "found_folders": found_folders, "search_status": search_status,
             "cancel_find": cancel_find, "mode": mode, "mode_help": mode_help,
             "speaker_setup": speaker_setup, "speaker_count": speaker_count,
-            "refresh_status": refresh_status}
+            "refresh_status": refresh_status, "plan": plan, "results_table": results_table,
+            "diagnostic": diagnostic, "diagnostic_status": diagnostic_status}
