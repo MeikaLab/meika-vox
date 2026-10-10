@@ -339,3 +339,76 @@ def test_filter_pagination_explicit_selection_and_drive_destination(tmp_path, mo
     panel["destination_create"].click()
     assert (target_base / "Nuevo estudio").is_dir()
     assert panel["state"]["output_base"] == target_base / "Nuevo estudio"
+
+
+def test_two_source_folders_export_to_custom_drive_destination(tmp_path, monkeypatch):
+    import IPython.display
+
+    import meika_vox.pipeline
+    import meika_vox.providers.isolated_provider
+    import meika_vox.runtime
+
+    monkeypatch.setattr(IPython.display, "display", lambda *args: None)
+    monkeypatch.setattr(
+        meika_vox.runtime, "inspect_runtime",
+        lambda: SimpleNamespace(asr_ready=True, cuda_available=False),
+    )
+
+    class PanelProvider(FakeProvider):
+        def __init__(self, **kwargs):
+            pass
+
+        def release(self):
+            pass
+
+    real_pipeline = meika_vox.pipeline.run_transcription
+
+    def fake_pipeline(audio, project_id, provider, **kwargs):
+        return real_pipeline(audio, project_id, provider, **kwargs,
+                             media_probe=fake_media_probe,
+                             audio_quality_analyzer=fake_audio_quality)
+
+    monkeypatch.setattr(meika_vox.providers.isolated_provider,
+                        "IsolatedWhisperXProvider", PanelProvider)
+    monkeypatch.setattr(meika_vox.pipeline, "run_transcription", fake_pipeline)
+
+    first = tmp_path / "A"
+    second = tmp_path / "B"
+    destination = tmp_path / "Resultados personalizados"
+    for folder in (first, second, destination):
+        folder.mkdir()
+    (first / "a.wav").write_bytes(b"primer audio")
+    (second / "b.wav").write_bytes(b"segundo audio")
+
+    panel = ui.build_panel(ROOT, tmp_path)
+    panel["folders"].value = str(first)
+    panel["select_visible"].click()
+    panel["up"].click()
+    panel["folders"].value = str(second)
+    panel["select_visible"].click()
+    assert len(panel["recordings"].value) == 2
+    panel["project"].value = "Estudio de prueba"
+    panel["cpu_consent"].value = True
+
+    panel["destination_back"].click()
+    panel["destination_back"].click()
+    panel["destination_options"].value = str(destination)
+    panel["destination_enter"].click()
+    panel["destination_use"].click()
+    assert "Resultados personalizados" in panel["plan"].value
+    panel["start"].click()
+    deadline = time.monotonic() + 12
+    while panel["state"]["busy"] and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    assert not panel["state"]["busy"]
+    assert "2 guardados" in panel["summary"].value
+    output = destination / "Estudio_de_prueba" / "Transcripciones"
+    assert len(list(output.rglob("manifest.json"))) == 2
+    assert len(list((output / "Lectura").glob("*.txt"))) == 2
+    assert (output / "Transcripciones.zip").exists()
+    panel["start"].click()
+    deadline = time.monotonic() + 12
+    while panel["state"]["busy"] and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert "2 ya existentes" in panel["summary"].value
