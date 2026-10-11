@@ -233,6 +233,9 @@ def test_batch_persists_failure_report_when_runner_fails(tmp_path: Path):
     )
     saved = json.loads((destination / "batch_last_report.json").read_text())
     assert result["status"] == saved["status"] == "incomplete"
+    assert saved["started_at"] <= saved["updated_at"]
+    assert saved["stage"] == "Lote finalizado"
+    assert saved["current_audio"] is None
     assert len(saved["failed"]) == 1
     assert saved["pending"] == 0
 
