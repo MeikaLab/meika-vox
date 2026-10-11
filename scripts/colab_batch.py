@@ -358,10 +358,13 @@ def process_folder(
         state = {}
     settings = configuration_key(command, configuration)
     report = {"completed": [], "skipped": [], "failed": [], "pending": len(audios),
-              "status": "in_progress", "archive_error": None}
+              "status": "in_progress", "archive_error": None,
+              "started_at": time.time(), "updated_at": time.time(),
+              "stage": "Preparando lote", "current_audio": None}
 
     def persist_report(final: bool = False) -> None:
-        """Write progress atomically so a Colab disconnect retains the last outcome."""
+        """Write last known activity; an in_progress report is not proof of a live task."""
+        report["updated_at"] = time.time()
         processed = sum(len(report[k]) for k in ("completed", "skipped", "failed"))
         report["pending"] = max(0, len(audios) - processed)
         if final:
@@ -413,6 +416,9 @@ def process_folder(
         if should_stop and should_stop():
             notify("stopped", index, audio)
             break
+        report["current_audio"] = audio.name
+        report["stage"] = "Procesando audio"
+        persist_report()
         notify("started", index, audio)
         emit(f"[{index}/{len(audios)}] {audio.name}")
         try:
@@ -536,6 +542,8 @@ def process_folder(
             emit(f"PENDIENTE: {error}")
             notify("failed", index, audio)
         finally:
+            report["current_audio"] = None
+            report["stage"] = "Audio revisado; guardando estado"
             # A report remains readable even if the next audio crashes the VM.
             try:
                 persist_report()
@@ -549,6 +557,7 @@ def process_folder(
             report["archive_error"] = type(exc).__name__
             emit("Los TXT se guardaron, pero no se pudo crear el ZIP. "
                  "Puedes reintentar sin volver a transcribir.")
+    report["stage"] = "Lote finalizado"
     persist_report(final=True)
     notify("finished", len(audios))
     emit(
