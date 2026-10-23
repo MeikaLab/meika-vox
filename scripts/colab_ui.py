@@ -357,7 +357,8 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
             start_help.value = "Procesando; cada audio terminado se guarda en Drive."
 
     def choose(change):
-        if state["busy"] or state["finding"]:
+        # File selection is independent of the optional global Drive search.
+        if state["busy"]:
             return
         box = change["owner"]
         if change["new"]:
@@ -419,7 +420,8 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         sync_basket()
 
     def discover(_=None):
-        if state["busy"] or state["finding"]:
+        # A direct folder scan remains usable during global discovery.
+        if state["busy"]:
             return
         clear_selection()
         try:
@@ -522,12 +524,14 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         search_stop.clear()
         found_folders.options = [("Elige un resultado…", "")]
         found_folders.layout.display = "none"
-        for control in controls:
-            control.disabled = True
-        retry.disabled = download.disabled = True
+        # Do not freeze manual folder browsing or the Drive destination selector.
+        find.disabled = True
         cancel_find.disabled = False
         cancel_find.layout.display = ""
-        search_status.value = "Buscando en Mi unidad… Puede tardar si tienes muchas carpetas."
+        search_status.value = (
+            "Buscando en Mi unidad… Puedes navegar por carpetas mientras tanto "
+            "o detener esta búsqueda. No necesitas esperar para elegir audios."
+        )
         ready()
 
         def progress(info):
@@ -569,8 +573,7 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                                        "Comprueba Drive y reintenta.")
             finally:
                 state["finding"] = False
-                for control in controls:
-                    control.disabled = False
+                find.disabled = False
                 cancel_find.layout.display = "none"
                 up.disabled = state["folder"] == root
                 folders.disabled = len(folders.options) <= 1
@@ -623,6 +626,21 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
         if not access_only and (not selected or (not gpu and not cpu_consent.value)):
             update_stage("Selecciona audios y comprueba el modo de procesamiento.")
             return
+        if not access_only:
+            try:
+                project = project_slug(project_input.value.strip() or state["folder"].name)
+                target = (Path(state["output_base"]) / project / "Transcripciones").resolve()
+            except ValueError as exc:
+                update_stage(str(exc))
+                return
+            if any(p.resolve().is_relative_to(target) for p in selected):
+                update_stage("Origen y destino se superponen; no se inició el lote.")
+                summary.value = (
+                    "<b>Corrige la ubicación:</b> uno de los audios está dentro de "
+                    "la carpeta de resultados de este proyecto. Elige otra carpeta "
+                    "para los originales o cambia el destino. No necesitas convertir M4A."
+                )
+                return
         lock_handle = (Path(tempfile.gettempdir()) / "meika_vox_batch.lock").open("a")
         try:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -848,12 +866,30 @@ def build_panel(repo: Path, root: Path, *, test_mode: bool = False) -> dict:
                                      "<pre style='white-space:pre-wrap'>"
                                      f"{escape(text[:1500])}</pre>")
                 relative = output.relative_to(root)
-                results.value = (
-                    f"<b>Resultados:</b> Mi unidad / {escape(str(relative))} / Lectura<br>"
-                    f"<a href='https://drive.google.com/drive/u/0/search?q={quote(project_id)}' "
-                    "target='_blank'>Buscar proyecto en Drive</a><br>"
-                    "Cada texto es preliminar: revisa las citas y voces antes de utilizarlas. "
-                    "Los originales técnicos se conservan por versión.")
+                if successful:
+                    names = "".join(
+                        f"<li>{escape(Path(item['text']).name)}</li>"
+                        for item in successful[:20]
+                    )
+                    if len(successful) > 20:
+                        names += f"<li>Y {len(successful) - 20} más…</li>"
+                    results.value = (
+                        "<b>Transcripciones TXT listas para revisar:</b><br>"
+                        f"Mi unidad / {escape(str(relative))} / Lectura"
+                        f"<ul>{names}</ul>"
+                        f"<a href='https://drive.google.com/drive/u/0/search?"
+                        f"q={quote(project_id)}' "
+                        "target='_blank'>Buscar proyecto en Drive</a> "
+                        "(búsqueda por nombre; no es un enlace directo a la carpeta).<br>"
+                        "<small>batch_last_report.json es un informe técnico, "
+                        "NO es la transcripción. Revisa las citas antes de utilizarlas.</small>"
+                    )
+                else:
+                    results.value = (
+                        "<b>No hay transcripciones listas todavía.</b> "
+                        "Revisa los pendientes y Detalles técnicos. "
+                        "batch_last_report.json es solo el informe del lote."
+                    )
             except Exception as exc:
                 progress.bar_style = "danger"
                 state["failed"] = selected
